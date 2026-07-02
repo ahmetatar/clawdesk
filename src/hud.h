@@ -73,7 +73,7 @@ private:
   int drawPct(int x, const char *label, int pct) {
     if (pct < 0) return x;
     char buf[14];
-    snprintf(buf, sizeof(buf), "%s%d%%", label, pct);
+    snprintf(buf, sizeof(buf), "%s %d%%", label, pct);   // etiketten sonra bosluk: "ctx: 12%"
     _tft->setTextFont(2);
     _tft->setTextDatum(ML_DATUM);
     _tft->setTextColor(pctColor(pct), _bg);
