@@ -24,6 +24,7 @@ INPUT="$(cat)"
 jqr() { printf '%s' "$INPUT" | jq -r "$1" 2>/dev/null; }
 
 model="$(jqr '.model.display_name // ""')"
+model="${model%% (*}"      # "Opus 4.8 (1M context)" -> "Opus 4.8" (parantezli eki at, cihazda sigsin)
 ctx="$(jqr '.context_window.used_percentage // empty')"
 h5="$(jqr '.rate_limits.five_hour.used_percentage // empty')"
 wk="$(jqr '.rate_limits.seven_day.used_percentage // empty')"
