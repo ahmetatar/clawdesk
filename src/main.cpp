@@ -127,12 +127,6 @@ static const char *OOPS[]  = { "Oops...", "Yikes...", "Uh-oh...", "Welp...",
 
 static const char *pick(const char *const *pool, int n) { return pool[esp_random() % n]; }
 
-// Tool adini sag-alt icin kisalt: mcp__server__method -> son segment.
-static const char *niceTool(const char *t) {
-  if (!strncmp(t, "mcp__", 5)) { const char *p = strrchr(t, '_'); return (p && p[1]) ? p + 1 : "mcp"; }
-  return t;
-}
-
 // Kategoriyi HUD'a yansit. Kategori degismediyse dokunma (kelime sabit kalir).
 static void setHudCat(HudCat cat) {
   if ((int)cat == g_hudCat) return;
@@ -146,26 +140,19 @@ static void setHudCat(HudCat cat) {
   }
 }
 
-// Olayi HUD'a yansit: sol-alt flavor metni + sag-alt calisan tool adi.
-// tool ismi tool.pre'de set edilir; dusunme/bosta temizlenir; tool.post'ta kalir
-// (biten arac kisa sure gorunur, sonraki tool.pre hemen degistirir).
+// Olayi HUD ust satirina (spinner/flavor) yansit. (Tool adi satiri KALDIRILDI.)
 static void updateHud(const Ev &e) {
   const char *k = e.k;
-  if (!strcmp(k, "session.start")) { setHudCat(HC_HAPPY); hud.setTool(""); return; }
-  if (!strcmp(k, "session.stop"))  { setHudCat(HC_IDLE);  hud.setTool(""); return; }
-  if (!strcmp(k, "tool.post"))     { setHudCat(e.ok ? HC_IDLE : HC_OOPS); if (e.ok) hud.setTool(""); return; }
+  if (!strcmp(k, "session.start")) { setHudCat(HC_HAPPY); return; }
+  if (!strcmp(k, "session.stop"))  { setHudCat(HC_IDLE);  return; }
+  if (!strcmp(k, "tool.post"))     { setHudCat(e.ok ? HC_IDLE : HC_OOPS); return; }
   if (!strcmp(k, "git"))           { setHudCat(HC_HAPPY); return; }
   if (!strcmp(k, "prompt.submit") || !strcmp(k, "compact") || !strcmp(k, "wait") ||
-      (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); hud.setTool(""); return; }
-  if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); hud.setTool(""); return; }
-  if (!strcmp(k, "agent.spawn")) { setHudCat(HC_WORK); hud.setTool("agent"); return; }
+      (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); return; }
+  if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); return; }
+  if (!strcmp(k, "agent.spawn")) { setHudCat(HC_WORK); return; }
   if (!strcmp(k, "agent.done"))  return;                 // mini eksilir; HUD'a dokunma
-  if (!strcmp(k, "tool.pre")) {
-    if (isWaitingTool(e.tool)) { setHudCat(HC_THINK); hud.setTool("waiting..."); return; }
-    setHudCat(HC_WORK);
-    hud.setTool(niceTool(e.tool[0] ? e.tool : e.g));
-    return;
-  }
+  if (!strcmp(k, "tool.pre")) { setHudCat(isWaitingTool(e.tool) ? HC_THINK : HC_WORK); return; }
 }
 
 static void drawFrame(AnimId id, int f) {
@@ -273,8 +260,10 @@ void setup() {
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
   setAnim(ANIM_IDLE);
 
-  // HUD: bantlari baslat + ilk cizim. Ust bant statusLine ozeti (POST /status ile dolar).
+  // HUD: bantlari baslat + ilk cizim. sol-ust WiFi cubuklari; alt sol iki satir
+  // (spinner + statusLine ozeti). statusLine POST /status ile dolar.
   hud.begin(&tft);
+  hud.setWifi(true, WiFi.RSSI());
   hud.setAction("");                               // idle: sol-alt bos
   hud.render();
 
@@ -335,7 +324,7 @@ void loop() {
     if (spawn && wasZero) {
       setAnim(ANIM_AGENTS);
     } else if (done && agentActive == 0) {
-      setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool("");
+      setAnim(ANIM_IDLE); setHudCat(HC_IDLE);
     } else if (!agentMode) {
       int id = mapEvent(e);
       if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
@@ -354,9 +343,9 @@ void loop() {
     applyPowerEdge(st);                              // CPU frekansi
     // Isik dustugunde clawd uyuklama pozuna gecer (kapali gozler + zzZZ).
     // (busy-gate mesgulken kismayi engeller -> normalde burada mini olmaz; yine de temizle.)
-    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); hud.setTool(""); minis.clear(); agentActive = 0; agentMode = false; }
+    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); minis.clear(); agentActive = 0; agentMode = false; }
     // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
-    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool(""); }
+    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
     // SLEEP: ekran kapali, cizim yok.
   }
 
@@ -368,13 +357,22 @@ void loop() {
   }
 
   // 4) gecici ifade suresi doldu -> idle (flavor + tool adini da temizle)
-  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool(""); }
+  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
 
   // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ
   //    (ayri kuyruk, notifyActivity yok) -> status akisi cihazi uyanik tutmaz.
   //    Uykuda da tuketilir (buffer guncellenir); cizim yalniz uyanikken (asagida).
   StatusMsg sm;
   if (xQueueReceive(statusq, &sm, 0) == pdTRUE) hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
+
+  // 6) WiFi sinyalini periyodik yenile (her 4 sn). setWifi yalniz cubuk sayisi
+  //    degisince yeniden cizer -> RSSI dalgalansa da bosuna SPI yok.
+  static uint32_t lastWifiPoll = 0;
+  if (millis() - lastWifiPoll >= 4000) {
+    lastWifiPoll = millis();
+    bool c = (WiFi.status() == WL_CONNECTED);
+    hud.setWifi(c, c ? WiFi.RSSI() : -127);
+  }
 
   // 6) animasyon + HUD — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
   if (!power.asleep()) {
