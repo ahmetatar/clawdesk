@@ -123,7 +123,31 @@ echo '{"hook_event_name":"Stop"}' \
 ```
 
 Cihaz canlılığı: `curl http://<IP>/health` →
-`{"fw":"1.0.0","caps":["anim","led","touch","power"]}`.
+`{"fw":"1.0.0","caps":["anim","led","touch","power","hud","status"]}`.
+
+---
+
+## statusLine → cihaz HUD üst bandı
+
+Cihazın üst bandı, Claude Code'un **statusLine** özetini gösterir:
+`Model  ctx:%  5h:%  wk:%` (yüzdeler kullanıma göre yeşil/sarı/kırmızı — statusLine
+ile birebir). Veri `POST /status` ile gelir ve **güç yönetimini etkilemez** (cihazı
+uyandırmaz/uyanık tutmaz).
+
+**Neden ayrı kurulum?** Claude Code plugin'lere ana `statusLine`'ı manifest'ten
+verdirmez (sadece `agent`/`subagentStatusLine`). Ayrıca `context_window`/`rate_limits`
+verisine YALNIZ statusLine komutu erişir (hook'lar erişemez). Tek desteklenen yol:
+`settings.json`'daki `statusLine.command`'i plugin'in **wrapper**'ına yönlendirmek.
+
+**Kurulum (bir kez):**
+```
+/clawd:clawd-statusline          # slash komut, kurulumu çalıştırır
+# ya da elle:
+bash "<plugin>/scripts/clawd-statusline-setup.sh"
+```
+Kurulum senin **mevcut statusLine'ını AYNEN korur** (wrapper onu içinden çalıştırır,
+CLI görünümü değişmez) ve yanında cihaza POST ekler. Geri almak: aynı script `--uninstall`.
+Cihaz `clawd.local`'de değilse `CLAWD_HOST`'u `settings.local.json` env'inden ver.
 
 ---
 
@@ -134,8 +158,12 @@ tools/clawd-plugin/
   .claude-plugin/marketplace.json     # yerel marketplace (name: clawd)
   plugins/clawd/
     .claude-plugin/plugin.json        # plugin manifesti
-    hooks/hooks.json                  # 7 hook olayı -> clawd-hook.sh
-    scripts/clawd-hook.sh             # çalışma-zamanı köprüsü (jq + curl)
+    hooks/hooks.json                  # 8 hook olayı -> clawd-hook.sh
+    commands/clawd-statusline.md       # /clawd:clawd-statusline (statusLine kurulumu)
+    scripts/clawd-hook.sh             # olay köprüsü (jq + curl -> POST /e)
+    scripts/clawd-statusline-post.sh   # statusLine JSON -> POST /status (throttle'lı)
+    scripts/clawd-statusline.sh        # statusLine wrapper (orijinali sarar + cihaz)
+    scripts/clawd-statusline-setup.sh  # settings.json statusLine'ı wrapper'a bağlar
     README.md
 ```
 
