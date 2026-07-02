@@ -1,7 +1,7 @@
 {
   "name": "clawd",
-  "version": "1.0.5",
-  "description": "clawd CYD maskotunu Claude Code hook olaylariyla surer (POST /e -> clawd.local): think / hacking / happy / oops / idle + alt-agent (Task/SubagentStop) icin yan gezinen mini clawd'lar.",
+  "version": "1.0.6",
+  "description": "clawd CYD maskotunu Claude Code hook olaylariyla surer (POST /e -> clawd.local): think / hacking / happy / oops / idle + alt-agent (Task/SubagentStop) icin AGENTS pozu + 4 mini clawd. Ayrica statusLine ozetini cihaz HUD ust bandina yansitir (POST /status; /clawd:clawd-statusline ile kurulur).",
   "author": { "name": "Ahmet Atar" },
   "homepage": "https://github.com/ahmetatar/clawd-dashboard"
 }

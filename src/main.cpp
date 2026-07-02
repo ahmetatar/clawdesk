@@ -41,6 +41,12 @@ MiniFleet minis;   // alt-agent (Task) gorsellestirme: yan sutunlarda gezinen ku
 struct Ev { char k[24]; char g[10]; char s[48]; char tool[16]; bool ok; bool on; int ctx; };
 QueueHandle_t evq;
 
+// ---- status kuyrugu: Claude Code statusLine ozeti (POST /status) ----
+// Ayri kuyruk cunku status GUC yonetimini ETKILEMEMELI (uyku sayacini sifirlamaz,
+// cihazi uyandirmaz). Uzunluk 1 + overwrite: hep en son deger tutulur.
+struct StatusMsg { char m[12]; int ctx; int h5; int wk; };
+QueueHandle_t statusq;
+
 // ---- animasyon durumu ----
 const int SW   = ANIM_W * ANIM_S;                 // 192
 const int SH   = ANIM_H * ANIM_S;                 // 192
@@ -209,6 +215,7 @@ void setup() {
   yoff = (tft.height() - SH) / 2;                  // (240-192)/2 = 24
 
   evq = xQueueCreate(16, sizeof(Ev));
+  statusq = xQueueCreate(1, sizeof(StatusMsg));
 
   if (!connectWiFi()) {
     tft.fillScreen(TFT_BLACK);
@@ -222,8 +229,24 @@ void setup() {
   if (MDNS.begin("clawd")) MDNS.addService("http", "tcp", 80);
 
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *req) {
-    req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\",\"hud\"]}");
+    req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\",\"hud\",\"status\"]}");
   });
+
+  // POST /status (JSON: {m,ctx,h5,wk}) -> statusq (overwrite), 204.
+  // Claude Code statusLine ozeti. GUC yonetimine dokunmaz (notifyActivity YOK) ->
+  // status akisi cihazi uyanik tutmaz; uykudayken son deger saklanir, uyaninca cizilir.
+  auto *sHandler = new AsyncCallbackJsonWebHandler("/status", [](AsyncWebServerRequest *req, JsonVariant &json) {
+    JsonObject o = json.as<JsonObject>();
+    StatusMsg s{};
+    strlcpy(s.m, o["m"] | "", sizeof(s.m));
+    s.ctx = o["ctx"] | -1;
+    s.h5  = o["h5"]  | -1;
+    s.wk  = o["wk"]  | -1;
+    xQueueOverwrite(statusq, &s);
+    req->send(204);
+  });
+  sHandler->setMethod(HTTP_POST);
+  server.addHandler(sHandler);
 
   // POST /e (JSON) -> kuyruga push, 204
   auto *eHandler = new AsyncCallbackJsonWebHandler("/e", [](AsyncWebServerRequest *req, JsonVariant &json) {
@@ -250,9 +273,8 @@ void setup() {
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
   setAnim(ANIM_IDLE);
 
-  // HUD: koseleri baslat + ilk cizim (WiFi sinyal cubuklari RSSI'den).
+  // HUD: bantlari baslat + ilk cizim. Ust bant statusLine ozeti (POST /status ile dolar).
   hud.begin(&tft);
-  hud.setWifi(true, WiFi.RSSI());
   hud.setAction("");                               // idle: sol-alt bos
   hud.render();
 
@@ -348,14 +370,11 @@ void loop() {
   // 4) gecici ifade suresi doldu -> idle (flavor + tool adini da temizle)
   if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool(""); }
 
-  // 5) WiFi sinyalini periyodik yenile (her 4 sn). setWifi yalniz cubuk sayisi
-  //    degisince yeniden cizer -> RSSI dalgalansa da bosuna SPI yok.
-  static uint32_t lastWifiPoll = 0;
-  if (millis() - lastWifiPoll >= 4000) {
-    lastWifiPoll = millis();
-    bool c = (WiFi.status() == WL_CONNECTED);
-    hud.setWifi(c, c ? WiFi.RSSI() : -127);
-  }
+  // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ
+  //    (ayri kuyruk, notifyActivity yok) -> status akisi cihazi uyanik tutmaz.
+  //    Uykuda da tuketilir (buffer guncellenir); cizim yalniz uyanikken (asagida).
+  StatusMsg sm;
+  if (xQueueReceive(statusq, &sm, 0) == pdTRUE) hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
 
   // 6) animasyon + HUD — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
   if (!power.asleep()) {
