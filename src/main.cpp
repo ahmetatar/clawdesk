@@ -151,7 +151,7 @@ static void updateHud(const Ev &e) {
   if (!strcmp(k, "git"))           { setHudCat(HC_HAPPY); return; }
   if (!strcmp(k, "prompt.submit") || !strcmp(k, "compact") || !strcmp(k, "wait") ||
       (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); hud.setTool(""); return; }
-  if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); return; }
+  if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); hud.setTool(""); return; }
   if (!strcmp(k, "agent.spawn")) { setHudCat(HC_WORK); hud.setTool("agent"); return; }
   if (!strcmp(k, "agent.done"))  return;                 // mini eksilir; HUD'a dokunma
   if (!strcmp(k, "tool.pre")) {
@@ -332,9 +332,9 @@ void loop() {
     applyPowerEdge(st);                              // CPU frekansi
     // Isik dustugunde clawd uyuklama pozuna gecer (kapali gozler + zzZZ).
     // (busy-gate mesgulken kismayi engeller -> normalde burada mini olmaz; yine de temizle.)
-    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); minis.clear(); agentActive = 0; agentMode = false; }
+    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); hud.setTool(""); minis.clear(); agentActive = 0; agentMode = false; }
     // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
-    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
+    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool(""); }
     // SLEEP: ekran kapali, cizim yok.
   }
 
@@ -345,8 +345,8 @@ void loop() {
     minis.markAllDirty();                            // temiz zemine yeniden cizsinler
   }
 
-  // 4) gecici ifade suresi doldu -> idle (flavor metnini de temizle)
-  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
+  // 4) gecici ifade suresi doldu -> idle (flavor + tool adini da temizle)
+  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool(""); }
 
   // 5) WiFi sinyalini periyodik yenile (her 4 sn). setWifi yalniz cubuk sayisi
   //    degisince yeniden cizer -> RSSI dalgalansa da bosuna SPI yok.
