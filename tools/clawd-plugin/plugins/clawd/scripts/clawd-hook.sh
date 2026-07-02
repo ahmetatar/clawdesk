@@ -12,7 +12,9 @@
 #
 # OLAY ESLEMESI:
 #   UserPromptSubmit    -> {k:"prompt.submit"}          -> THINK
-#   PreToolUse (*)      -> {k:"tool.pre", d:{g,tool,s}} -> HACKING (tekrar = no-op)
+#   PreToolUse (Task)   -> {k:"agent.spawn"}            -> AGENTS pozu + altta 4 mini clawd BELIRIR
+#   PreToolUse (diger)  -> {k:"tool.pre", d:{g,tool,s}} -> HACKING (tekrar = no-op)
+#   SubagentStop        -> {k:"agent.done"}             -> is bitince (sayac 0) 4 mini de GIDER
 #   PostToolUse (Bash)  -> git commit/push ise {k:"git"} -> HAPPY (aksi halde sessiz)
 #   PostToolUseFailure  -> {k:"tool.post", d:{ok:false}} -> OOPS (guvenilir hata sinyali)
 #   PreCompact          -> {k:"compact"}                -> THINK
@@ -49,7 +51,7 @@ group() {
     Read)                               echo read ;;
     Grep|Glob)                          echo search ;;
     WebFetch|WebSearch)                 echo web ;;
-    Task)                               echo agent ;;
+    Task|Agent)                         echo agent ;;
     TodoWrite|TaskCreate|TaskUpdate)    echo plan ;;
     mcp__*)                             echo ext ;;
     *)                                  echo "" ;;
@@ -64,12 +66,21 @@ case "$ev" in
     ;;
 
   PreToolUse)
-    g="$(group "$tool")"
-    # en anlamli tek ozet: komut / dosya / desen / url
-    s="$(jqr '[.tool_input.command, .tool_input.file_path, .tool_input.pattern, .tool_input.url]
-              | map(select(. != null and . != "")) | (.[0] // "") | tostring')"
-    s="${s:0:40}"
-    body="$(jq -nc --arg g "$g" --arg tool "$tool" --arg s "$s" '{k:"tool.pre",d:{g:$g,tool:$tool,s:$s}}')"
+    # ALT-AGENT: Task/Agent tool'u = Claude bir alt-agent aciyor. Sıradan tool.pre
+    # yerine ozel agent.spawn yolla -> cihazda buyuk maskot AGENTS pozuna gecer
+    # (yukari kayip asagi bakar) ve altta 4 mini clawd BIRDEN belirir; is bitince
+    # (SubagentStop -> agent.done, sayac 0) hepsi kaybolur.
+    # (Tool adi ortama gore "Task" ya da "Agent" olabilir -> ikisini de yakala.)
+    if [ "$tool" = "Task" ] || [ "$tool" = "Agent" ]; then
+      body='{"k":"agent.spawn"}'
+    else
+      g="$(group "$tool")"
+      # en anlamli tek ozet: komut / dosya / desen / url
+      s="$(jqr '[.tool_input.command, .tool_input.file_path, .tool_input.pattern, .tool_input.url]
+                | map(select(. != null and . != "")) | (.[0] // "") | tostring')"
+      s="${s:0:40}"
+      body="$(jq -nc --arg g "$g" --arg tool "$tool" --arg s "$s" '{k:"tool.pre",d:{g:$g,tool:$tool,s:$s}}')"
+    fi
     ;;
 
   PostToolUse)
@@ -102,6 +113,7 @@ case "$ev" in
     body='{"k":"tool.post","d":{"ok":false}}'
     ;;
 
+  SubagentStop)  body='{"k":"agent.done"}' ;;   # bir alt-agent bitti -> yan mini "yurur gider"
   PreCompact)    body='{"k":"compact"}' ;;
   SessionStart)  body='{"k":"session.start"}' ;;
   Stop)          body='{"k":"session.stop"}' ;;

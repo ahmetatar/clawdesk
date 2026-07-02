@@ -403,8 +403,29 @@ def anim_ask(n=8):
         out.append(c)
     return out
 
+# --- agents: clawd alt-agent'lari yonetir -> YUKARI kayar, ASAGIDAKI mini clawd'lara bakar ---
+# Ayri, sakin bir "gozetim" pozu (klavye YOK). clawd yukari kaydirilir ki ekranin
+# altinda gercek bir ZEMIN bandi acilsin; firmware o zemine + iki yana mini clawd'lar
+# kondurur. Cihaz bu anim'i yalniz UST satirlari (pushH=40) cizer -> alt bant mini'lere kalir.
+AGENTS_UP = 8                                   # clawd'i kac px yukari cek (main.cpp pushH ile uyumlu)
+def anim_agents(n=8):
+    """clawd alt-ajanlarini gozetir: yukari kayip ASAGI kucuk clawd'lara bakar
+    (gozler asagi + hafif saga-sola tarama), sakin nefes alir. Klavye yok."""
+    out = []
+    for i in range(n):
+        sy = 1.0 - 0.05 * (0.5 - 0.5 * math.cos(i / n * 2 * math.pi))   # yumusak nefes
+        nh = max(1, int(round(CH * sy)))
+        eye_dx = (0, 1, 1, 0, -1, -1, 0, 0)[i % 8]                       # asagidaki mini'leri tarar
+        cl = clawd_variant(eye_dx=eye_dx, eye_dy=3)                       # gozler ASAGI bakar
+        cl = cl.resize((CW, nh), Image.NEAREST)
+        c = base_canvas()
+        c.alpha_composite(cl, (CX, (CY - AGENTS_UP) + (CH - nh)))        # yukari kaydir, ayak sabit
+        out.append(c)
+    return out
+
 ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
-         "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask}
+         "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
+         "agents": anim_agents}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")

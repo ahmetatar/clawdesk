@@ -11,8 +11,9 @@
 #include "anims/clawd_oops.h"
 #include "anims/clawd_sleep.h"
 #include "anims/clawd_ask.h"
+#include "anims/clawd_agents.h"
 
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_COUNT };
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -33,4 +34,9 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_oops,    CLAWD_OOPS_FRAMES,     91, true,  false, true,  "oops"    },
   { clawd_sleep,   CLAWD_SLEEP_FRAMES,   200, false, false, false, "sleep"   },  // DIM'de: uyuklama pozu
   { clawd_ask,     CLAWD_ASK_FRAMES,     130, false, false, true,  "ask"     },  // AskUserQuestion: "?" seni bekliyor
+  { clawd_agents,  CLAWD_AGENTS_FRAMES,  140, false, false, true,  "agents"  },  // alt-agent: yukari kayip mini'lere bakar
 };
+
+// Bu anim'in kac SATIRINI ciz (64=tam). ANIM_AGENTS yalniz ust bandi cizer;
+// alt bant (y>=24+40*3=144) mini clawd zeminidir -> ust katmanla cakismaz.
+static inline uint8_t animPushRows(AnimId id) { return id == ANIM_AGENTS ? 40 : ANIM_H; }
