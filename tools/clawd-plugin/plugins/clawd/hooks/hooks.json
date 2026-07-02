@@ -13,6 +13,9 @@
     "PostToolUseFailure": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
     ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
     "PreCompact": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
     ],

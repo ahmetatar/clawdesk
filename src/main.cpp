@@ -27,6 +27,7 @@
 #include "anims.h"
 #include "power.h"
 #include "hud.h"
+#include "mini.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SPIClass touchSPI(HSPI);
@@ -34,6 +35,7 @@ XPT2046_Touchscreen ts(T_CS);
 AsyncWebServer server(80);
 PowerManager power;
 Hud hud;
+MiniFleet minis;   // alt-agent (Task) gorsellestirme: yan sutunlarda gezinen kucuk clawd'lar
 
 // ---- olay kuyrugu (07'den) ----
 struct Ev { char k[24]; char g[10]; char s[48]; char tool[16]; bool ok; bool on; int ctx; };
@@ -49,6 +51,13 @@ int     frame    = 0;
 uint32_t lastFrame = 0;
 uint32_t revertAt  = 0;                            // gecici ifade -> idle zamani (0 = yok)
 
+// ---- alt-agent modu ----
+// agentActive = o an calisan GERCEK alt-agent sayisi (spawn++/done--). >0 iken "agent modu":
+// ekranda hep 4 mini gosterilir ve buyuk poz ANIM_AGENTS'te KILITLI kalir (tool.pre/hacking
+// vb. mini'lerin ustune binmesin). Sayac 0'a inince (is bitince) 4 mini de kaybolur.
+int     agentActive = 0;
+bool    agentMode   = false;
+
 static void led(bool g, bool b) {                 // active-low
   digitalWrite(LED_G, g ? LOW : HIGH);
   digitalWrite(LED_B, b ? LOW : HIGH);
@@ -61,6 +70,9 @@ static void setAnim(AnimId id) {
   const Anim &a = ANIMS[id];
   revertAt = a.transient ? millis() + HOLD_MS : 0;
   led(a.led_g, a.led_b);
+  // ANIM_AGENTS yalniz ust bandi cizer; alt bant (mini zemini) her frame yenilenmez.
+  // Geciste onceki tam-boy anim'in kalintisini merkezden bir kez sil ki zemin temiz BG kalsin.
+  if (id == ANIM_AGENTS) tft.fillRect(xoff, yoff, SW, SH, tft.color565(BG_R, BG_G, BG_B));
   Serial.printf("[clawd] anim -> %s\n", a.name);
 }
 
@@ -79,7 +91,8 @@ static int mapEvent(const Ev &e) {
   if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
   if (!strcmp(k, "git"))            return ANIM_HAPPY;
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
-  if (!strcmp(k, "agent.spawn"))    return ANIM_HACKING;
+  if (!strcmp(k, "agent.spawn"))    return ANIM_AGENTS;    // alt-agent: maskot yukari kayip mini'lere bakar
+  if (!strcmp(k, "agent.done"))     return -1;             // alt-agent bitti: pozu bozma, mini eksilir
   if (!strcmp(k, "compact"))        return ANIM_THINK;
   if (!strcmp(k, "wait"))           return ANIM_THINK;
   if (!strcmp(k, "prompt.submit"))  return ANIM_THINK;
@@ -139,7 +152,9 @@ static void updateHud(const Ev &e) {
   if (!strcmp(k, "prompt.submit") || !strcmp(k, "compact") || !strcmp(k, "wait") ||
       (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); hud.setTool(""); return; }
   if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); return; }
-  if (!strcmp(k, "tool.pre") || !strcmp(k, "agent.spawn")) {
+  if (!strcmp(k, "agent.spawn")) { setHudCat(HC_WORK); hud.setTool("agent"); return; }
+  if (!strcmp(k, "agent.done"))  return;                 // mini eksilir; HUD'a dokunma
+  if (!strcmp(k, "tool.pre")) {
     if (isWaitingTool(e.tool)) { setHudCat(HC_THINK); hud.setTool("waiting..."); return; }
     setHudCat(HC_WORK);
     hud.setTool(niceTool(e.tool[0] ? e.tool : e.g));
@@ -149,7 +164,8 @@ static void updateHud(const Ev &e) {
 
 static void drawFrame(AnimId id, int f) {
   const uint16_t *fr = ANIMS[id].frames[f];
-  for (int y = 0; y < ANIM_H; y++) {
+  int rows = animPushRows(id);                      // ANIM_AGENTS: yalniz ust bant (alt = mini zemini)
+  for (int y = 0; y < rows; y++) {
     for (int x = 0; x < ANIM_W; x++) {
       uint16_t c = fr[y * ANIM_W + x];
       for (int s = 0; s < ANIM_S; s++) linebuf[x * ANIM_S + s] = c;
@@ -239,6 +255,8 @@ void setup() {
   hud.setWifi(true, WiFi.RSSI());
   hud.setAction("");                               // idle: sol-alt bos
   hud.render();
+
+  minis.begin(&tft);                               // yan sutun mini-clawd filosu (bos baslar)
 }
 
 // Uyku durumu kenarlarinda CPU/uyandirma yan etkileri.
@@ -276,9 +294,32 @@ void loop() {
     // 10 dk uyanik kalir ve 30s dim / 120s uyku baypas olur. Gercek "mesgul" ancak
     // prompt/tool/think ile baslar, session.stop ile biter.
     power.setBusy(strcmp(e.k, "session.start") != 0 && strcmp(e.k, "session.stop") != 0);
-    int id = mapEvent(e);
-    if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
-    updateHud(e);                                      // sol-alt flavor + oturum
+
+    bool spawn  = !strcmp(e.k, "agent.spawn");
+    bool done   = !strcmp(e.k, "agent.done");
+    bool sbound = !strcmp(e.k, "session.start") || !strcmp(e.k, "session.stop");
+
+    // Gercek alt-agent sayaci. Ilk spawn'da 4 mini BIRDEN acilir; sayac 0'a
+    // inince (is bitince) 4'u de kaybolur. Oturum sinirinda kesin sifir.
+    bool wasZero = (agentActive == 0);
+    if (spawn)       { agentActive++; if (wasZero) minis.showAll(); }
+    else if (done)   { if (agentActive > 0) agentActive--; if (agentActive == 0) minis.clear(); }
+    else if (sbound) { agentActive = 0; minis.clear(); }
+    agentMode = (agentActive > 0);
+
+    // Buyuk poz: agent modu boyunca ANIM_AGENTS'te KILITLI (tool.pre/hacking vb.
+    // mini'lerin ustune binmesin). Ilk spawn -> agents; son done -> idle; diger
+    // olaylar agent modunda pozu DEGISTIRMEZ; mod disinda normal esleme.
+    if (spawn && wasZero) {
+      setAnim(ANIM_AGENTS);
+    } else if (done && agentActive == 0) {
+      setAnim(ANIM_IDLE); setHudCat(HC_IDLE); hud.setTool("");
+    } else if (!agentMode) {
+      int id = mapEvent(e);
+      if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
+    }
+
+    updateHud(e);                                      // HUD koseleri her olayda guncellenir
     Serial.printf("[clawd] olay k=%s g=%s\n", e.k, e.g);
   }
 
@@ -290,7 +331,8 @@ void loop() {
     PowerManager::State st = power.state();
     applyPowerEdge(st);                              // CPU frekansi
     // Isik dustugunde clawd uyuklama pozuna gecer (kapali gozler + zzZZ).
-    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); }
+    // (busy-gate mesgulken kismayi engeller -> normalde burada mini olmaz; yine de temizle.)
+    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); minis.clear(); agentActive = 0; agentMode = false; }
     // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
     else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
     // SLEEP: ekran kapali, cizim yok.
@@ -300,6 +342,7 @@ void loop() {
   if (wasAsleep && !power.asleep()) {
     tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
     hud.markAllDirty();
+    minis.markAllDirty();                            // temiz zemine yeniden cizsinler
   }
 
   // 4) gecici ifade suresi doldu -> idle (flavor metnini de temizle)
@@ -323,6 +366,7 @@ void loop() {
       frame = (frame + 1) % ANIMS[curAnim].count;
     }
     hud.render();                                    // yalniz kirli koseler cizilir
+    minis.tick();                                    // yan sutunlarda alt-agent mini'leri
   }
 
   delay(power.asleep() ? 40 : 5);                   // uykuda daha uzun bekle (guc)
