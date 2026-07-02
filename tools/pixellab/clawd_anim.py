@@ -192,13 +192,16 @@ def anim_idle(n=8):
         out.append(c)
     return out
 
+HACK_UP = 8                                # hacking'i YUKARI kaydir: klavye alt HUD
+                                           # yazilariyla cakismasin (cihaz alt bandi 2 satir).
 def anim_hacking(n=8):
     """clawd SABIT durur; sol/sag kollari hafif asagi-yukari; gozler hafif tarar;
-    onunde klavye, tuslari basiliyor. clawd zINPLAMAZ."""
+    onunde klavye, tuslari basiliyor. clawd zINPLAMAZ. TUM sahne HACK_UP kadar yukarida
+    (klavye alt yazilarin ustunde kalir)."""
     out = []
     kb_w = 54; kb_h = 20
     kb_x = (CANVAS - kb_w) // 2
-    kb_y = CY + CH - 3                     # clawd ayak hizasinda, oniyle hafif ortusur
+    kb_y = CY + CH - 3 - HACK_UP           # clawd ayak hizasinda ama yukari kaydirilmis
     NK = 30                                # izgara tus sayisi (~)
     for i in range(n):
         ph = i / n * 2 * math.pi
@@ -207,7 +210,7 @@ def anim_hacking(n=8):
         eye_dx = (0, 1, 0, 0, 0, -1, 0, 0)[i % 8]
         cl = clawd_variant(eye_dx=eye_dx, larm_dy=larm, rarm_dy=rarm)
         c = base_canvas()
-        place(c, cl)                                  # clawd sabit konum/boyut
+        place(c, cl, dy=-HACK_UP)                     # clawd yukari kaydirilmis
         d = ImageDraw.Draw(c)
         pressed = {(i * 3) % NK, (i * 5 + 4) % NK}    # her frame farkli izgara tusu
         if i % 4 == 3: pressed.add(99)                # ara sira Enter'a bas (renkli)

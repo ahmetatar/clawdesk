@@ -37,6 +37,10 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_agents,  CLAWD_AGENTS_FRAMES,  140, false, false, true,  "agents"  },  // alt-agent: yukari kayip mini'lere bakar
 };
 
-// Bu anim'in kac SATIRINI ciz (64=tam). ANIM_AGENTS yalniz ust bandi cizer;
-// alt bant (y>=24+40*3=144) mini clawd zeminidir -> ust katmanla cakismaz.
-static inline uint8_t animPushRows(AnimId id) { return id == ANIM_AGENTS ? 40 : ANIM_H; }
+// Bu anim'in kac SATIRINI ciz. Alt bant HUD 2 satiri (spinner + status line) icin
+// bosaltilir: normal anim'ler 58 satira kirpilir (ekran y[24, 24+58*3=198)), altta
+// y[198,240) HUD'a kalir -> ust katmanla cakismaz, titreme yok. Kirpilan satirlar
+// (58-63) clawd'in ALTINDAKI bos fume'dir; clawd govdesi (row<=47) korunur. hacking
+// bile HACK_UP ile yukari kaydigindan klavye row~55'te biter, kirpma disinda kalir.
+// ANIM_AGENTS ise yalniz ust bandi (40) cizer; y[144,198) mini zemini, y[198,240) HUD.
+static inline uint8_t animPushRows(AnimId id) { return id == ANIM_AGENTS ? 40 : 58; }
