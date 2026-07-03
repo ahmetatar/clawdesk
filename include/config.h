@@ -63,6 +63,16 @@ constexpr uint32_t BL_RAMP_MS  = 8;     // ~ (255/12)*8 ≈ 170 ms tam fade
 constexpr int      CPU_HZ_ACTIVE = 240;
 constexpr int      CPU_HZ_SLEEP  = 80;
 
+// ---- dokunmatik jestleri (gidiklama / oksama) ----
+// XPT2046 getPoint() HAM ADC dondurur (~200..3900). Cift-dokunus = iki kisa tap;
+// surtme/oksama = tek dokunusta genis yatay x hareketi. Esikler ham ADC birimidir.
+constexpr uint32_t TAP_MAX_MS       = 350;  // tek temas bundan kisaysa (+az hareket) = "tap"
+constexpr uint32_t DOUBLETAP_MS     = 500;  // iki tap arasi bundan az ise = cift-tap (gidiklama)
+constexpr int      STROKE_MIN_RAW   = 400;  // tek temasta x bu kadar degisirse = surtme (oksama)
+constexpr uint32_t TOUCH_SETTLE_MS  = 25;   // temas basindaki ADC gurultusunu atla (tap araligi sismesin)
+constexpr uint32_t TOUCH_RELEASE_MS = 55;   // bu kadar temassizlik = GERCEK birakma. Kisa basinc
+                                            // dususu drag'i bolmez; deliberate cift-tap (gap>100ms) birlesmez.
+
 // ---- ag / statik IP ----
 // Bu cihaz bir TP-Link menzil genisletici (TL-WA854RE) ARKASINDA calisiyor;
 // ana router (192.168.1.1) clawd'in gercek MAC'ini GORMEZ (extender proxy ARP
