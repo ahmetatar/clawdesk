@@ -40,8 +40,8 @@ public:
     _wifiDirty = true;
   }
 
-  // Claude Code status line ozeti (alt satir). model bos -> temizlenir.
-  // ctx/h5/wk: yuzde (0..100); <0 -> o segment gizlenir (veri yok).
+  // Claude Code status line ozeti (alt satir). model bos -> "Claude" varsayilani.
+  // ctx/h5/wk: yuzde (0..100); <0 -> "etiket -" sonuk placeholder (veri bekleniyor).
   void setStatus(const char *model, int ctx, int h5, int wk) {
     strlcpy(_model, model ? model : "", sizeof(_model));
     _ctx = ctx; _h5 = h5; _wk = wk;
@@ -91,14 +91,22 @@ private:
                    : _tft->color565(70, 200, 110);
   }
 
-  // Tek "etiket %" segmenti ciz, yeni x dondur. pct<0 -> ciz(me), x aynen.
+  // Tek "etiket %" segmenti ciz, yeni x dondur. pct<0 (veri yok) -> "etiket -"
+  // sonuk placeholder olarak yine ciz (bar bos kalmasin); gercek deger gelince
+  // renkli % ile dolar.
   int drawPct(int x, const char *label, int pct) {
-    if (pct < 0) return x;
     char buf[14];
-    snprintf(buf, sizeof(buf), "%s %d%%", label, pct);   // etiketten sonra bosluk: "ctx: 12%"
+    uint16_t col;
+    if (pct < 0) {
+      snprintf(buf, sizeof(buf), "%s -", label);          // "ctx: -" (veri bekleniyor)
+      col = _tft->color565(120, 120, 132);                // sonuk gri placeholder
+    } else {
+      snprintf(buf, sizeof(buf), "%s %d%%", label, pct);  // "ctx: 12%" (renkli)
+      col = pctColor(pct);
+    }
     _tft->setTextFont(2);
     _tft->setTextDatum(ML_DATUM);
-    _tft->setTextColor(pctColor(pct), _bg);
+    _tft->setTextColor(col, _bg);
     _tft->drawString(buf, x, STATUS_Y, 2);
     return x + _tft->textWidth(buf, 2) + 8;
   }
@@ -117,13 +125,12 @@ private:
   void drawStatus() {
     clearRect(0, STATUS_Y - 11, 320, 23);
     int x = 6;
-    if (_model[0]) {
-      _tft->setTextFont(2);
-      _tft->setTextDatum(ML_DATUM);
-      _tft->setTextColor(_tft->color565(150, 150, 162), _bg);
-      _tft->drawString(_model, x, STATUS_Y, 2);
-      x += _tft->textWidth(_model, 2) + 10;
-    }
+    const char *model = _model[0] ? _model : "Claude";   // veri yok -> varsayilan
+    _tft->setTextFont(2);
+    _tft->setTextDatum(ML_DATUM);
+    _tft->setTextColor(_tft->color565(150, 150, 162), _bg);
+    _tft->drawString(model, x, STATUS_Y, 2);
+    x += _tft->textWidth(model, 2) + 10;
     x = drawPct(x, "ctx:", _ctx);
     x = drawPct(x, "5h:",  _h5);
     x = drawPct(x, "wk:",  _wk);
