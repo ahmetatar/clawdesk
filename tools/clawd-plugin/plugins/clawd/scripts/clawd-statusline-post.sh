@@ -15,13 +15,19 @@ set -u
 
 HOST="${CLAWD_HOST:-clawd.local}"
 TIMEOUT="${CLAWD_TIMEOUT:-2}"
-STATE="${TMPDIR:-/tmp}/clawd-statusline.last"
 
 command -v jq   >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 
 INPUT="$(cat)"
 jqr() { printf '%s' "$INPUT" | jq -r "$1" 2>/dev/null; }
+
+# STATE: dedup dosyasi OTURUM BASINA (session_id ile). Es zamanli oturumlar boylece
+# birbirinin son-degerini EZMEZ -> her oturum yalniz KENDI degeri degisince gonderir,
+# cihaz "son aktif oturum"u stabil gosterir (bosta oturumlar bosuna repost yapmaz).
+# session_id yoksa tek paylasimli dosyaya duser (eski davranis; hicbir sey bozulmaz).
+sid="$(jqr '.session_id // empty')"; sid="${sid//[^A-Za-z0-9_-]/}"
+STATE="${TMPDIR:-/tmp}/clawd-statusline-${sid:-shared}.last"
 
 model="$(jqr '.model.display_name // ""')"
 model="${model%% (*}"      # "Opus 4.8 (1M context)" -> "Opus 4.8" (parantezli eki at, cihazda sigsin)
