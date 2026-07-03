@@ -174,6 +174,15 @@ static bool connectWiFi() {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString("WiFi baglaniyor...", tft.width() / 2, tft.height() / 2, 2);
   WiFi.mode(WIFI_STA);
+#if CLAWD_STATIC_IP
+  // Cihaz IP'yi kendisi sabitler (extender arkasinda DHCP reservation calismaz).
+  IPAddress ip(IP_LOCAL[0], IP_LOCAL[1], IP_LOCAL[2], IP_LOCAL[3]);
+  IPAddress gw(IP_GATEWAY[0], IP_GATEWAY[1], IP_GATEWAY[2], IP_GATEWAY[3]);
+  IPAddress mask(IP_SUBNET[0], IP_SUBNET[1], IP_SUBNET[2], IP_SUBNET[3]);
+  IPAddress dns(IP_DNS[0], IP_DNS[1], IP_DNS[2], IP_DNS[3]);
+  if (!WiFi.config(ip, gw, mask, dns))
+    Serial.println("[clawd] WiFi.config BASARISIZ -> DHCP'ye donuluyor");
+#endif
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) { delay(300); Serial.print("."); }
