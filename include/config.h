@@ -62,3 +62,17 @@ constexpr uint32_t BL_RAMP_MS  = 8;     // ~ (255/12)*8 ≈ 170 ms tam fade
 // uyku CPU frekansi (240 -> 80 MHz: WiFi icin min guvenli, ~yari guc)
 constexpr int      CPU_HZ_ACTIVE = 240;
 constexpr int      CPU_HZ_SLEEP  = 80;
+
+// ---- ag / statik IP ----
+// Bu cihaz bir TP-Link menzil genisletici (TL-WA854RE) ARKASINDA calisiyor;
+// ana router (192.168.1.1) clawd'in gercek MAC'ini GORMEZ (extender proxy ARP
+// yapar) -> router tarafinda DHCP reservation ISE YARAMAZ. Cozum: cihaz IP'yi
+// KENDISI sabitler. Secilen IP ana router'in DHCP havuzunun (192.168.1.100-.200)
+// DISINDA olmali ki router baskasina dagitip cakismasin. .201 = havuz disi, ayni
+// LAN /24. CLAWD_HOST (PC hook + statusLine) bu IP'ye ayarlanmali.
+// BASKA bir agda kullanacaksan CLAWD_STATIC_IP'yi 0 yap -> normal DHCP'ye doner.
+#define CLAWD_STATIC_IP 1
+constexpr uint8_t IP_LOCAL[4]   = {192, 168, 1, 201};
+constexpr uint8_t IP_GATEWAY[4] = {192, 168, 1, 1};
+constexpr uint8_t IP_SUBNET[4]  = {255, 255, 255, 0};
+constexpr uint8_t IP_DNS[4]     = {192, 168, 1, 1};
