@@ -31,6 +31,8 @@ Claude Code hook (kısa ömürlü)  ──HTTP──►  ESP32 HTTP sunucusu (cl
 | Uç | Yön | Ne yapar |
 |---|---|---|
 | `POST /e` | hook → cihaz | Fire-and-forget olay. Body = envelope. **204** döner. |
+| `POST /status` | statusLine → cihaz | HUD üst bandı özeti `{m,ctx,h5,wk}`. **204**. Güç yönetimine dokunmaz. |
+| `POST /words` | komut → cihaz | Spinner kelime havuzunu değiştir `{"w":["Cogitating",…]}`. **200** `{ok,n}` / boş→**400**. RAM'de tutulur, reboot'ta `spinner_words.h` varsayılanına döner. |
 | `POST /perm` | hook → cihaz | İzin sorusu. Body `{"id":7,"d":{tool,s,risk}}`. Hemen `{"pending":true}` döner, ekranda prompt açılır. |
 | `GET /perm/{id}` | hook → cihaz | Karar yoklaması. `{"decision":"allow"\|"deny"}` ya da `{"pending":true}`. |
 | `GET /health` | hook → cihaz | Canlılık + cihaz bilgisi: `{"fw":"0.1.0","caps":["led","audio","touch","ldr"]}`. |

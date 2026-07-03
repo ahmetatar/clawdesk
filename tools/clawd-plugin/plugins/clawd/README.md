@@ -151,6 +151,36 @@ Cihaz `clawd.local`'de değilse `CLAWD_HOST`'u `settings.local.json` env'inden v
 
 ---
 
+## Spinner kelimeleri → cihaz (Claude Code'un GERÇEK listesi)
+
+Cihaz HUD üst satırındaki "düşünme/çalışma" metinleri (spinner) artık firmware'e
+gömülü **gerçek Claude Code gerund havuzundan** gelir (`src/spinner_words.h`, ~178
+kelime — "Cogitating…", "Herding…", "Combobulating…"). CC bu kelimeyi hiçbir hook/
+statusLine arayüzüne sızdırmadığı için ekrandaki **birebir o an**ki kelime alınamaz;
+bunun yerine cihaz **aynı kelime havuzundan** kendisi seçer (WORK+THINK tek havuz;
+HAPPY/OOPS cihaza özel kalır — CC başarıda/hatada spinner kelimesi göstermez).
+
+Listeyi ileride özelleştirir/güncellersen cihaza yansıtmak için:
+
+```
+/clawd:sync-spinner-words        # slash komut: havuzu cihaza POST /words ile gönder
+# önce önizleme:
+bash "<plugin>/scripts/clawd-spinner-sync.sh" --preview
+```
+
+- **Kaynak:** `~/.claude/clawd-spinner-words.txt` varsa (her satır bir kelime; `#`
+  yorum) o dosya kaynak alınır; yoksa kurulu Claude Code ikilisinden **canlı** çıkarılır
+  (sürümden bağımsız — nadir bir çapa kelimeyle küme bulunur).
+- **Kalıcılık:** liste cihazın **RAM**'inde tutulur; reboot'ta `spinner_words.h`
+  varsayılanına döner. Özel listen varsa reboot sonrası komutu tekrar çalıştır.
+- **Compile-time varsayılanı tazele** (yeni CC sürümü):
+  `bash "<plugin>/scripts/clawd-spinner-extract.sh" --header > src/spinner_words.h`
+  → firmware'i yeniden flash'la.
+
+Cihaz adresi yine `CLAWD_HOST` (varsayılan `clawd.local`) ile verilir.
+
+---
+
 ## Dosyalar
 
 ```
@@ -160,10 +190,13 @@ tools/clawd-plugin/
     .claude-plugin/plugin.json        # plugin manifesti
     hooks/hooks.json                  # 8 hook olayı -> clawd-hook.sh
     commands/clawd-statusline.md       # /clawd:clawd-statusline (statusLine kurulumu)
+    commands/sync-spinner-words.md     # /clawd:sync-spinner-words (spinner havuzu -> cihaz)
     scripts/clawd-hook.sh             # olay köprüsü (jq + curl -> POST /e)
     scripts/clawd-statusline-post.sh   # statusLine JSON -> POST /status (throttle'lı)
     scripts/clawd-statusline.sh        # statusLine wrapper (orijinali sarar + cihaz)
     scripts/clawd-statusline-setup.sh  # settings.json statusLine'ı wrapper'a bağlar
+    scripts/clawd-spinner-extract.sh   # CC spinner kelimelerini çıkar (--header ile spinner_words.h)
+    scripts/clawd-spinner-sync.sh      # spinner havuzunu cihaza gönder (POST /words)
     README.md
 ```
 
