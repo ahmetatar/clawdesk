@@ -28,6 +28,7 @@
 #include "power.h"
 #include "hud.h"
 #include "mini.h"
+#include "spinner_words.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SPIClass touchSPI(HSPI);
@@ -46,6 +47,15 @@ QueueHandle_t evq;
 // cihazi uyandirmaz). Uzunluk 1 + overwrite: hep en son deger tutulur.
 struct StatusMsg { char m[12]; int ctx; int h5; int wk; };
 QueueHandle_t statusq;
+
+// ---- spinner havuzu overwrite (POST /words) ----
+// Claude Code'un GERCEK spinner listesi cihaza yansitilabilsin diye (clawd:sync-spinner-words).
+// Async callback listeyi HEAP'te bir SpinPool'a ayristirip pointer'i wordsq'ya koyar;
+// takas + eski havuzu free() loop()'ta yapilir -> g_spin'e yalniz loop task dokunur
+// (pick de loop'ta), boylece kilitsiz thread-safe. (SPI'ye async'ten dokunulmaz kurali korunur.)
+struct SpinPool { char *blob; const char **idx; int n; };
+QueueHandle_t wordsq;                        // uzunluk 1, SpinPool* tutar
+static SpinPool *g_heapPool = nullptr;       // o an aktif heap havuz (nullptr = derleme-ici varsayilan)
 
 // ---- animasyon durumu ----
 const int SW   = ANIM_W * ANIM_S;                 // 192
@@ -117,11 +127,14 @@ static int mapEvent(const Ev &e) {
 enum HudCat { HC_IDLE, HC_THINK, HC_WORK, HC_HAPPY, HC_OOPS };
 int g_hudCat = -1;
 
-static const char *WORK[]  = { "Crafting...", "Tinkering...", "Hacking...", "Wrangling...",
-                               "Conjuring...", "Summoning...", "Brewing...", "Forging...",
-                               "Cooking...", "Noodling...", "Fiddling...", "Hustling..." };
-static const char *THINK[] = { "Pondering...", "Thinking...", "Musing...", "Scheming...",
-                               "Plotting...", "Percolating...", "Daydreaming...", "Wondering..." };
+// WORK ve THINK ("clawd calisiyor/dusunuyor") -> Claude Code'un GERCEK spinner
+// havuzundan beslenir (spinner_words.h, ~178 gerund). CC bu kelimeleri mood'a gore
+// ayirmaz (hepsi "mesgulum" tek havuzu), o yuzden iki durum da ayni havuzdan secer.
+// HAPPY/OOPS ise CIHAZA OZEL (CC basaride/hatada spinner kelimesi gostermez) -> kalir.
+// Spinner havuzu calisma-zamaninda POST /words ile degistirilebilir (asagi bak).
+static const char *const *g_spin  = SPINNER_WORDS_DEFAULT;   // aktif havuz (varsayilan: derleme-ici)
+static int                g_spinN = SPINNER_WORDS_DEFAULT_N;
+
 static const char *HAPPY[] = { "Shipping!", "Nailed it!", "Boom!", "Committed!",
                                "Victory!", "High five!" };
 static const char *OOPS[]  = { "Oops...", "Yikes...", "Uh-oh...", "Welp...",
@@ -129,13 +142,21 @@ static const char *OOPS[]  = { "Oops...", "Yikes...", "Uh-oh...", "Welp...",
 
 static const char *pick(const char *const *pool, int n) { return pool[esp_random() % n]; }
 
+// Spinner kelimeleri "...'siz" gelir (CC gerund'lari: "Cogitating"). HUD'da spinner
+// hissi icin sonuna "..." ekleyip statik tampona yaz (setAction kopyalar).
+static const char *pickSpin() {
+  static char buf[40];
+  snprintf(buf, sizeof(buf), "%s...", pick(g_spin, g_spinN));
+  return buf;
+}
+
 // Kategoriyi HUD'a yansit. Kategori degismediyse dokunma (kelime sabit kalir).
 static void setHudCat(HudCat cat) {
   if ((int)cat == g_hudCat) return;
   g_hudCat = cat;
   switch (cat) {
-    case HC_WORK:  hud.setAction(pick(WORK,  12)); break;
-    case HC_THINK: hud.setAction(pick(THINK,  8)); break;
+    case HC_WORK:  hud.setAction(pickSpin()); break;
+    case HC_THINK: hud.setAction(pickSpin()); break;
     case HC_HAPPY: hud.setAction(pick(HAPPY,  6)); break;
     case HC_OOPS:  hud.setAction(pick(OOPS,   6)); break;
     case HC_IDLE:  hud.setAction(""); break;
@@ -214,6 +235,7 @@ void setup() {
 
   evq = xQueueCreate(16, sizeof(Ev));
   statusq = xQueueCreate(1, sizeof(StatusMsg));
+  wordsq  = xQueueCreate(1, sizeof(SpinPool*));
 
   if (!connectWiFi()) {
     tft.fillScreen(TFT_BLACK);
@@ -264,9 +286,61 @@ void setup() {
   eHandler->setMethod(HTTP_POST);
   server.addHandler(eHandler);
 
+  // POST /words (JSON: {"w":["Cogitating","Herding",...]}) -> spinner havuzunu DEGISTIR.
+  // clawd:sync-spinner-words komutu Claude Code'un gercek listesini (ya da kullanicinin
+  // ~/.claude/clawd-spinner-words.txt ozelini) buraya yollar. Kelimeler HEAP'te tek bir
+  // SpinPool'a kopyalanir; pointer wordsq'ya konur, aktif havuza takas + eski free() loop()'ta.
+  // Bos/gecersiz gövde -> 400 (varsayilana DONULMEZ). Guc yonetimine dokunmaz (uyandirmaz).
+  auto *wHandler = new AsyncCallbackJsonWebHandler("/words", [](AsyncWebServerRequest *req, JsonVariant &json) {
+    JsonArray arr = json["w"].as<JsonArray>();
+    if (arr.isNull()) { req->send(400, "application/json", "{\"err\":\"w[] yok\"}"); return; }
+
+    // 1. gecis: gecerli string sayisi + blob boyutu (bos olmayan tekiller). Ust sinir 512.
+    int n = 0; size_t blobLen = 0;
+    for (JsonVariant v : arr) {
+      const char *s = v.as<const char*>();
+      if (!s || !*s) continue;
+      if (n >= 512) break;
+      n++; blobLen += strlen(s) + 1;
+    }
+    if (n == 0) { req->send(400, "application/json", "{\"err\":\"bos\"}"); return; }
+
+    // heap: blob (yan yana '\0'-ayrik kelimeler) + idx (blob'a pointer'lar) + SpinPool.
+    SpinPool *p = (SpinPool*)malloc(sizeof(SpinPool));
+    char *blob  = (char*)malloc(blobLen);
+    const char **idx = (const char**)malloc(sizeof(char*) * n);
+    if (!p || !blob || !idx) { free(p); free(blob); free(idx);
+      req->send(500, "application/json", "{\"err\":\"oom\"}"); return; }
+
+    // 2. gecis: kopyala.
+    size_t o = 0; int i = 0;
+    for (JsonVariant v : arr) {
+      if (i >= n) break;
+      const char *s = v.as<const char*>();
+      if (!s || !*s) continue;
+      size_t len = strlen(s) + 1;
+      memcpy(blob + o, s, len);
+      idx[i++] = blob + o;
+      o += len;
+    }
+    p->blob = blob; p->idx = idx; p->n = n;
+
+    // eski bekleyen (henuz loop takas etmemis) havuz varsa sizmasin: overwrite oncesi al & free.
+    SpinPool *stale = nullptr;
+    if (xQueueReceive(wordsq, &stale, 0) == pdTRUE && stale) {
+      free(stale->blob); free((void*)stale->idx); free(stale);
+    }
+    xQueueOverwrite(wordsq, &p);
+
+    char msg[40]; snprintf(msg, sizeof(msg), "{\"ok\":true,\"n\":%d}", n);
+    req->send(200, "application/json", msg);
+  });
+  wHandler->setMethod(HTTP_POST);
+  server.addHandler(wHandler);
+
   server.onNotFound([](AsyncWebServerRequest *req) { req->send(404, "text/plain", "yok"); });
   server.begin();
-  Serial.println("[clawd] HTTP :80 ayakta (/e /health)");
+  Serial.println("[clawd] HTTP :80 ayakta (/e /status /words /health)");
 
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
   setAnim(ANIM_IDLE);
@@ -440,6 +514,16 @@ void loop() {
   //    Uykuda da tuketilir (buffer guncellenir); cizim yalniz uyanikken (asagida).
   StatusMsg sm;
   if (xQueueReceive(statusq, &sm, 0) == pdTRUE) hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
+
+  // POST /words ile gelen yeni spinner havuzunu AKTIF ET (takas loop'ta -> kilitsiz guvenli).
+  // g_spin'e yalniz bu task dokunur; eski heap havuz (varsa) burada free edilir.
+  SpinPool *np;
+  if (xQueueReceive(wordsq, &np, 0) == pdTRUE && np) {
+    g_spin = np->idx; g_spinN = np->n;
+    if (g_heapPool) { free(g_heapPool->blob); free((void*)g_heapPool->idx); free(g_heapPool); }
+    g_heapPool = np;
+    Serial.printf("[clawd] spinner havuzu guncellendi: %d kelime\n", np->n);
+  }
 
   // 6) WiFi sinyalini periyodik yenile (her 4 sn). setWifi yalniz cubuk sayisi
   //    degisince yeniden cizer -> RSSI dalgalansa da bosuna SPI yok.
