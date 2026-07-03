@@ -104,6 +104,36 @@ def draw_heart(c, cx, cy):
             p[px_, py_] = HEART
     if 0 <= cx+1 < CANVAS and 0 <= cy+1 < CANVAS: p[cx+1, cy+1] = HEART_HI  # parlak nokta
 
+# --- PixelLab pixel-art KALP (07_heart.py ile uretildi) — oksama/love icin ---
+# clawd deterministik kalir; PixelLab yalniz bu "kalp" elementini uretir (hibrit
+# recete: tum karakteri PixelLab animasyonuna sokmak clawd'i bozuyordu). Zemin duz
+# gri geldi -> kose renginden key-out ile transparanlastir, sonra bbox'a kirp.
+def _load_heart_spr():
+    hp = os.path.join(HERE, "out/heart.png")
+    if not os.path.exists(hp): return None
+    im = Image.open(hp).convert("RGBA"); px = im.load(); w, h = im.size
+    bg = px[0, 0][:3]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if all(abs((r, g, b)[k] - bg[k]) <= 45 for k in range(3)):
+                px[x, y] = (0, 0, 0, 0)                      # gri zemini sil
+    bb = im.getchannel("A").getbbox()
+    return im.crop(bb) if bb else None
+HEART_SPR = _load_heart_spr()
+
+def draw_heart_spr(c, cx, cy, th=13, alpha=255):
+    """PixelLab kalbini (cx,cy) MERKEZLI, th px yuksekliginde, alpha ile birlestir.
+    Sprite yoksa kod-cizili minik kalbe duser (guvenli fallback)."""
+    if HEART_SPR is None:
+        return draw_heart(c, cx, cy)
+    w, h = HEART_SPR.size
+    tw = max(1, round(w * th / h))
+    spr = HEART_SPR.resize((tw, th), Image.NEAREST)
+    if alpha < 255:
+        spr.putalpha(spr.getchannel("A").point(lambda v: v * alpha // 255))
+    c.alpha_composite(spr, (cx - tw // 2, cy - th // 2))
+
 def base_canvas():
     return Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
 
@@ -426,9 +456,51 @@ def anim_agents(n=8):
         out.append(c)
     return out
 
+# --- love: OKSAMA (surtme jesti) -> mutlu > < gozler + yukselen PixelLab kalpleri ---
+# Sakin/sevecen his: happy'den FARKLI (ziplama yok, kutlama degil sefkat). clawd
+# minik sag-sol salinir + cok hafif nefes; cevrede PixelLab kalpleri suzulup solar.
+def anim_love(n=8):
+    """Oksama: clawd mutlu > < gozlerle sakin durur (minik salinim + hafif nefes,
+    ZIPLAMA yok); cevresinde PixelLab kalpleri yukselip solar."""
+    out = []
+    # (x, taban_y, baslangic_frame, hedef_yukseklik_px) — cesitli boy = derinlik
+    hearts = [(15, 30, 0, 15), (49, 33, 2, 13), (32, 8, 3, 16),
+              (7, 21, 4, 11), (57, 19, 6, 12)]
+    life = 5
+    for i in range(n):
+        ph = i / n * 2 * math.pi
+        dx = round(1.0 * math.sin(ph))                       # minik sag-sol salinim
+        breath = 1 if i % 4 in (1, 2) else 0                 # cok hafif nefes (kollar)
+        cl = clawd_variant(eyes="happy", larm_dy=-breath, rarm_dy=-breath)
+        c = base_canvas()
+        place(c, cl, dx=dx)
+        for (hx, hy, st, th) in hearts:                      # yukselen kalpler
+            age = (i - st) % n
+            if age < life:
+                # HEP opak: koyu zeminde alpha dusunce kalp grilesiyor. Fade yerine
+                # kalp yukselir ve life sonunda ANINDA kaybolur (temiz, hep canli renk).
+                draw_heart_spr(c, hx, hy - age * 3, th=th, alpha=255)
+        out.append(c)
+    return out
+
+# --- tickle: CIFT-DOKUNUS -> gidiklanma. clawd hizli saga-sola titrer (kikirder),
+# gozler > < ; ustte sembol yok. oops'un yatay titremesiyle ayni teknik, mutlu goz. ---
+def anim_tickle(n=8):
+    """Gidiklanma: clawd hizli/genis saga-sola titrer + minik dikey zipirti
+    (kikirdama), gozler > < . Cift-dokunusla tetiklenir, transient."""
+    out = []
+    shake = [-3, 3, -2, 3, -3, 2, -3, 2]                     # oops'tan genis/hizli
+    for i in range(n):
+        wig = -1 if i % 2 == 0 else 0                        # minik dikey kikirdama
+        cl = clawd_variant(eyes="happy", larm_dy=wig, rarm_dy=wig)
+        c = base_canvas()
+        place(c, cl, dx=shake[i % len(shake)], dy=wig)
+        out.append(c)
+    return out
+
 ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
          "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
-         "agents": anim_agents}
+         "agents": anim_agents, "love": anim_love, "tickle": anim_tickle}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")

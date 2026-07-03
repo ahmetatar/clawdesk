@@ -55,7 +55,9 @@ int xoff, yoff;
 AnimId  curAnim  = ANIM_IDLE;
 int     frame    = 0;
 uint32_t lastFrame = 0;
-uint32_t revertAt  = 0;                            // gecici ifade -> idle zamani (0 = yok)
+uint32_t revertAt  = 0;                            // gecici ifade -> donus zamani (0 = yok)
+AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bitince DONULECEK poz
+                                                   // (dokunus oncesi durum: think/hacking/idle...)
 
 // ---- alt-agent modu ----
 // agentActive = o an calisan GERCEK alt-agent sayisi (spawn++/done--). >0 iken "agent modu":
@@ -289,16 +291,61 @@ static void applyPowerEdge(PowerManager::State st) {
   }
 }
 
-// Dokunma var mi? (uyandirma icin sadece basinc yeterli — kalibrasyon gerekmez)
-static bool touched() {
+// Dokunma var mi? Basinc yeterli (uyandirma) + ham x doldur (jest algilama).
+// rawx = XPT2046 ham ADC x (kalibrasyon gerekmez; jestte sadece GORELI hareket lazim).
+static bool readTouch(int &rawx) {
   if (!ts.tirqTouched() && !ts.touched()) return false;
   TS_Point p = ts.getPoint();
-  return p.z >= 200;
+  if (p.z < 200) return false;
+  rawx = p.x;
+  return true;
+}
+
+// Dokunmatik jest durum makinesi — her loop cagirilir. DOWN/UP kenarlari + dokunma
+// suresince ham x araligindan iki jesti ayirt eder:
+//   TG_DOUBLETAP = iki kisa tap ard arda (gidiklama)
+//   TG_STROKE    = tek dokunusta genis yatay hareket (surtme/oksama)
+enum TouchGesture { TG_NONE = 0, TG_DOUBLETAP, TG_STROKE };
+static TouchGesture touchGesture(bool isTouched, int rawx) {
+  static bool     contact = false;             // debounce'lu temas suruyor mu
+  static uint32_t startMs = 0, seenMs = 0, lastTapMs = 0;
+  static int      minX = 0, maxX = 0;
+  static bool     settled = false;
+  TouchGesture g = TG_NONE;
+  uint32_t now = millis();
+
+  if (isTouched) {
+    seenMs = now;
+    if (!contact) {                            // yeni temas basliyor
+      contact = true; startMs = now; minX = maxX = rawx; settled = false;
+    } else if (now - startMs >= TOUCH_SETTLE_MS) {   // settle sonrasi x araligini izle
+      if (!settled) { minX = maxX = rawx; settled = true; }   // ilk gurultuyu at, araligi sifirla
+      if (rawx < minX) minX = rawx;
+      if (rawx > maxX) maxX = rawx;
+    }
+  } else if (contact && now - seenMs >= TOUCH_RELEASE_MS) {   // GERCEK birakma (debounce doldu)
+    contact = false;
+    uint32_t dur = seenMs - startMs;           // temas suresi (debounce kuyrugu haric)
+    int range = maxX - minX;
+    if (range >= STROKE_MIN_RAW) {             // tek temasta genis hareket -> surtme/oksama
+      g = TG_STROKE; lastTapMs = 0;
+    } else if (dur <= TAP_MAX_MS) {            // kisa + sabit -> tap
+      if (lastTapMs && now - lastTapMs <= DOUBLETAP_MS) { g = TG_DOUBLETAP; lastTapMs = 0; }
+      else lastTapMs = now;                    // ilk tap; ikinciyi bekle
+    }
+    // uzun + hareketsiz (parmak dinleniyor) -> yok say
+    if (g || range || dur)
+      Serial.printf("[touch] dur=%lu range=%d -> %s\n", (unsigned long)dur, range,
+                    g == TG_STROKE ? "STROKE(love)" : g == TG_DOUBLETAP ? "DOUBLETAP(tickle)" : "tap/none");
+  }
+  return g;
 }
 
 void loop() {
   bool wasAsleep = power.asleep();
-  bool isTouched = touched();
+  int  rawx = 0;
+  bool isTouched = readTouch(rawx);
+  TouchGesture tg = touchGesture(isTouched, rawx);
 
   // Uyandirma kaynagi (event/dokunma) varsa ve uykudaysak CPU'yu HERSEYDEN ONCE
   // tam hiza al: uyku 80MHz iken UART/cizim bozulmasin, olay tam hizda islensin.
@@ -346,6 +393,19 @@ void loop() {
   // 2) dokunma = aktivite (uykuda da uyandirir)
   if (isTouched) power.notifyActivity();
 
+  // 2b) dokunmatik jestleri: cift-dokunus -> gidiklama, surtme -> oksama (kalpler).
+  // Yalniz UYANIK + agent modu DISINDA tetiklenir (agent modu buyuk pozu KILITLI
+  // tutar; transient tickle/love idle'a donerek o kilidi bozardi). Uykudayken ilk
+  // dokunus cihazi uyandirir; clawd bir sonraki etkilesime tepki verir.
+  if (tg != TG_NONE && !power.asleep() && !agentMode) {
+    // Dokunus ONCESI pozu hatirla: tickle/love bitince idle'a DEGIL, o poza don
+    // (orn. Claude dusunurken oksarsan -> love -> tekrar think). curAnim zaten
+    // tickle/love ise (ust uste dokunus) uzerine yazma, gercek taban korunsun.
+    if (curAnim != ANIM_TICKLE && curAnim != ANIM_LOVE) returnAnim = curAnim;
+    if (tg == TG_DOUBLETAP)   setAnim(ANIM_TICKLE);
+    else if (tg == TG_STROKE) setAnim(ANIM_LOVE);
+  }
+
   // 3) guc durumunu guncelle + arka isik fade; durum degistiyse yan etki uygula
   if (power.tick()) {
     PowerManager::State st = power.state();
@@ -366,7 +426,14 @@ void loop() {
   }
 
   // 4) gecici ifade suresi doldu -> idle (flavor + tool adini da temizle)
-  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
+  if (revertAt && millis() >= revertAt) {
+    // Dokunmatik tickle/love -> dokunus oncesi poza don (think/hacking/idle...).
+    // Diger gecici ifadeler (happy/oops/ask) eskisi gibi idle'a doner.
+    bool touchAnim = (curAnim == ANIM_TICKLE || curAnim == ANIM_LOVE);
+    AnimId back = touchAnim ? returnAnim : ANIM_IDLE;
+    setAnim(back);
+    if (back == ANIM_IDLE) setHudCat(HC_IDLE);
+  }
 
   // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ
   //    (ayri kuyruk, notifyActivity yok) -> status akisi cihazi uyanik tutmaz.

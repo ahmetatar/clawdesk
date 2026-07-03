@@ -12,8 +12,10 @@
 #include "anims/clawd_sleep.h"
 #include "anims/clawd_ask.h"
 #include "anims/clawd_agents.h"
+#include "anims/clawd_tickle.h"
+#include "anims/clawd_love.h"
 
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_COUNT };
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_TICKLE, ANIM_LOVE, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -35,6 +37,8 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_sleep,   CLAWD_SLEEP_FRAMES,   200, false, false, false, "sleep"   },  // DIM'de: uyuklama pozu
   { clawd_ask,     CLAWD_ASK_FRAMES,     130, false, false, true,  "ask"     },  // AskUserQuestion: "?" seni bekliyor
   { clawd_agents,  CLAWD_AGENTS_FRAMES,  140, false, false, true,  "agents"  },  // alt-agent: yukari kayip mini'lere bakar
+  { clawd_tickle,  CLAWD_TICKLE_FRAMES,   80, true,  true,  false, "tickle"  },  // CIFT-DOKUNUS: gidiklanma (> < + hizli titreme)
+  { clawd_love,    CLAWD_LOVE_FRAMES,    110, true,  true,  false, "love"    },  // OKSAMA (surtme): > < + yukselen kalpler
 };
 
 // Bu anim'in kac SATIRINI ciz. Alt bant HUD 2 satiri (spinner + status line) icin
