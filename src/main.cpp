@@ -69,6 +69,14 @@ uint32_t revertAt  = 0;                            // gecici ifade -> donus zama
 AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bitince DONULECEK poz
                                                    // (dokunus oncesi durum: think/hacking/idle...)
 
+// ---- baglam-doluluk (ctx%) gostergesi ----
+// ctxHigh = son /status'ta ctx% CTX_BRAIN_THRESH (statusLine "kirmizi" esigiyle ayni)
+// UZERINDE mi. "Sakin dinlenme" pozu bu bayrağa gore ANIM_IDLE yerine ANIM_BRAIN_FULL
+// olur (restAnim()) — DIM/SLEEP'e gecmeden ONCE bir uyari katmani. Gercek reaksiyon
+// pozlarini (hacking/happy/oops/ask/agents) BOZMAZ, yalniz "dinlenmeye donus" hedefini degistirir.
+bool ctxHigh = false;
+static inline AnimId restAnim() { return ctxHigh ? ANIM_BRAIN_FULL : ANIM_IDLE; }
+
 // ---- alt-agent modu ----
 // agentActive = o an calisan GERCEK alt-agent sayisi (spawn++/done--). >0 iken "agent modu":
 // ekranda hep 4 mini gosterilir ve buyuk poz ANIM_AGENTS'te KILITLI kalir (tool.pre/hacking
@@ -111,7 +119,7 @@ static int mapEvent(const Ev &e) {
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
   if (!strcmp(k, "agent.spawn"))    return ANIM_AGENTS;    // alt-agent: maskot yukari kayip mini'lere bakar
   if (!strcmp(k, "agent.done"))     return -1;             // alt-agent bitti: pozu bozma, mini eksilir
-  if (!strcmp(k, "compact"))        return ANIM_THINK;
+  if (!strcmp(k, "compact"))        return ANIM_COMPACT;   // beyin + yildizlar: zihin temizleniyor
   if (!strcmp(k, "wait"))           return ANIM_THINK;
   if (!strcmp(k, "prompt.submit"))  return ANIM_THINK;
   if (!strcmp(k, "session.stop"))   return ANIM_IDLE;
@@ -457,9 +465,10 @@ void loop() {
     if (spawn && wasZero) {
       setAnim(ANIM_AGENTS);
     } else if (done && agentActive == 0) {
-      setAnim(ANIM_IDLE); setHudCat(HC_IDLE);
+      setAnim(restAnim()); setHudCat(HC_IDLE);
     } else if (!agentMode) {
       int id = mapEvent(e);
+      if (id == ANIM_IDLE) id = restAnim();          // "dinlenmeye don" hedefi: context kritikse beyin
       if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
     }
 
@@ -491,7 +500,7 @@ void loop() {
     // (busy-gate mesgulken kismayi engeller -> normalde burada mini olmaz; yine de temizle.)
     if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); minis.clear(); agentActive = 0; agentMode = false; }
     // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
-    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
+    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(restAnim()); setHudCat(HC_IDLE); }
     // SLEEP: ekran kapali, cizim yok.
   }
 
@@ -507,9 +516,9 @@ void loop() {
     // Dokunmatik tickle/love -> dokunus oncesi poza don (think/hacking/idle...).
     // Diger gecici ifadeler (happy/oops/ask) eskisi gibi idle'a doner.
     bool touchAnim = (curAnim == ANIM_TICKLE || curAnim == ANIM_LOVE);
-    AnimId back = touchAnim ? returnAnim : ANIM_IDLE;
+    AnimId back = touchAnim ? returnAnim : restAnim();
     setAnim(back);
-    if (back == ANIM_IDLE) setHudCat(HC_IDLE);
+    if (back == ANIM_IDLE || back == ANIM_BRAIN_FULL) setHudCat(HC_IDLE);
   }
 
   // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ
@@ -519,6 +528,16 @@ void loop() {
   if (xQueueReceive(statusq, &sm, 0) == pdTRUE) {
     hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
     hud.setReset(sm.h5r, sm.wkr);
+    // ctx% esigi gecince, cihaz O ANDA "dinlenme" pozundaysa (idle/brain_full) aninda
+    // gecis yap (bir sonraki olayi beklemeden) — guc yonetimine dokunmaz (bkz. yorum yukarida).
+    bool nowHigh = sm.ctx >= CTX_BRAIN_THRESH;
+    if (nowHigh != ctxHigh) {
+      ctxHigh = nowHigh;
+      if (!agentMode) {
+        if (ctxHigh && curAnim == ANIM_IDLE) setAnim(ANIM_BRAIN_FULL);
+        else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(ANIM_IDLE);
+      }
+    }
   }
 
   // POST /words ile gelen yeni spinner havuzunu AKTIF ET (takas loop'ta -> kilitsiz guvenli).

@@ -17,7 +17,7 @@
 #   SubagentStop        -> {k:"agent.done"}             -> is bitince (sayac 0) 4 mini de GIDER
 #   PostToolUse (Bash)  -> git commit/push ise {k:"git"} -> HAPPY (aksi halde sessiz)
 #   PostToolUseFailure  -> {k:"tool.post", d:{ok:false}} -> OOPS (guvenilir hata sinyali)
-#   PreCompact          -> {k:"compact"}                -> THINK
+#   PreCompact          -> {k:"compact"}                -> COMPACT (beyin + yanip sonen yildizlar)
 #   SessionStart        -> {k:"session.start"}          -> HAPPY
 #   Stop                -> {k:"session.stop"}           -> IDLE
 #
