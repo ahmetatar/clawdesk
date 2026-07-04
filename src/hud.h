@@ -43,7 +43,14 @@ public:
   // Claude Code status line ozeti (alt satir). model bos -> "Claude" varsayilani.
   // ctx/h5/wk: yuzde (0..100); <0 -> "etiket -" sonuk placeholder (veri bekleniyor).
   void setStatus(const char *model, int ctx, int h5, int wk) {
-    strlcpy(_model, model ? model : "", sizeof(_model));
+    const char *m = model ? model : "";
+    // Cihaz-tarafi dedup: deger GERCEKTEN degismediyse yeniden cizme (drawStatus bandi
+    // clearRect'ler -> aksi halde ayni degerin her tekrarinda gorunur bir "blink" olurdu).
+    // Reset sonrasi cihazda placeholder (_model="", _ctx=-1) durur; host son degeri
+    // yeniden yollayinca FARKLI olur -> bir kez cizilir (deger geri gelir). markAllDirty()
+    // (uykudan uyanma/ilk acilis) bu kontrolu baypas eder -> o yollarda cizim garanti.
+    if (ctx == _ctx && h5 == _h5 && wk == _wk && !strcmp(_model, m)) return;
+    strlcpy(_model, m, sizeof(_model));
     _ctx = ctx; _h5 = h5; _wk = wk;
     _statusDirty = true;
   }
