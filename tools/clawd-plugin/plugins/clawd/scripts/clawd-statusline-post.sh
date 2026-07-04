@@ -3,8 +3,10 @@
 #
 # Claude Code statusLine komutunun stdin'inde verilen zengin JSON'u alir
 # (.model.display_name, .context_window.used_percentage, .rate_limits.*), ozetler
-# ve DEGISTIYSE cihaza `POST /status` atar (fire-and-forget). Cihaz ust bandinda
-# `Model ctx:% 5h:% wk:%` (yuzdeler kullanima gore renkli) gosterir.
+# ve DEGISTIYSE cihaza `POST /status` atar (fire-and-forget). Cihaz alt bandinda
+# `Model ctx:% 5h:% wk:%` (yuzdeler kullanima gore renkli) + reset geri sayimi
+# `5h: (2h32m) wk: (2d5h)` (gri) gosterir. Geri sayim burada, host'ta hesaplanir
+# (rate_limits.*.resets_at epoch) -> cihaz saat bilmez, sadece hazir string ciziyor.
 #
 # NEDEN AYRI/THROTTLE: statusLine cok sik calisir; yalniz ozet DEGISINCE gonderilir
 # (son deger tmp dosyada) -> cihazi/agi bosuna mesgul etmez. Firmware /status'u GUC
@@ -40,13 +42,30 @@ model="${model%% (*}"      # "Opus 4.8 (1M context)" -> "Opus 4.8" (parantezli e
 ctx="$(jqr '.context_window.used_percentage // empty')"
 h5="$(jqr '.rate_limits.five_hour.used_percentage // empty')"
 wk="$(jqr '.rate_limits.seven_day.used_percentage // empty')"
+five_reset="$(jqr '.rate_limits.five_hour.resets_at // empty')"
+week_reset="$(jqr '.rate_limits.seven_day.resets_at // empty')"
 
 # yuzde -> tam sayi; veri yoksa -1 (cihaz o segmenti gizler)
 rnd() { if [ -n "$1" ]; then printf '%.0f' "$1"; else printf '%s' '-1'; fi; }
 ctx="$(rnd "$ctx")"; h5="$(rnd "$h5")"; wk="$(rnd "$wk")"
 
+# epoch -> "2h32m" / "2d5h" / "45m" (statusline-command.sh time_until ile AYNI bicim).
+# resets_at yoksa bos -> cihaz "-" placeholder gosterir.
+time_until() {
+  [ -z "$1" ] && return
+  local secs=$(( $1 - $(date +%s) ))
+  [ "$secs" -le 0 ] && { printf 'now'; return; }
+  local d=$(( secs / 86400 )) h=$(( (secs % 86400) / 3600 )) m=$(( (secs % 3600) / 60 ))
+  if [ "$d" -gt 0 ]; then printf '%dd%dh' "$d" "$h"
+  elif [ "$h" -gt 0 ]; then printf '%dh%02dm' "$h" "$m"
+  else printf '%dm' "$m"; fi
+}
+h5r="$(time_until "$five_reset")"
+wkr="$(time_until "$week_reset")"
+
 body="$(jq -nc --arg m "$model" --argjson ctx "$ctx" --argjson h5 "$h5" --argjson wk "$wk" \
-        '{m:$m, ctx:$ctx, h5:$h5, wk:$wk}' 2>/dev/null)" || exit 0
+        --arg h5r "$h5r" --arg wkr "$wkr" \
+        '{m:$m, ctx:$ctx, h5:$h5, wk:$wk, h5r:$h5r, wkr:$wkr}' 2>/dev/null)" || exit 0
 
 # fire-and-forget: arka planda, cikti /dev/null -> Claude Code beklemez
 post() { ( curl -s -m "$TIMEOUT" -o /dev/null -X POST "http://${HOST}/status" \

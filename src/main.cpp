@@ -45,7 +45,7 @@ QueueHandle_t evq;
 // ---- status kuyrugu: Claude Code statusLine ozeti (POST /status) ----
 // Ayri kuyruk cunku status GUC yonetimini ETKILEMEMELI (uyku sayacini sifirlamaz,
 // cihazi uyandirmaz). Uzunluk 1 + overwrite: hep en son deger tutulur.
-struct StatusMsg { char m[12]; int ctx; int h5; int wk; };
+struct StatusMsg { char m[12]; int ctx; int h5; int wk; char h5r[10]; char wkr[10]; };
 QueueHandle_t statusq;
 
 // ---- spinner havuzu overwrite (POST /words) ----
@@ -252,9 +252,10 @@ void setup() {
     req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\",\"hud\",\"status\"]}");
   });
 
-  // POST /status (JSON: {m,ctx,h5,wk}) -> statusq (overwrite), 204.
+  // POST /status (JSON: {m,ctx,h5,wk,h5r,wkr}) -> statusq (overwrite), 204.
   // Claude Code statusLine ozeti. GUC yonetimine dokunmaz (notifyActivity YOK) ->
   // status akisi cihazi uyanik tutmaz; uykudayken son deger saklanir, uyaninca cizilir.
+  // h5r/wkr: host'ta ONCEDEN bicimlendirilmis reset geri sayimi ("2h32m"/"2d5h"); bos -> "-".
   auto *sHandler = new AsyncCallbackJsonWebHandler("/status", [](AsyncWebServerRequest *req, JsonVariant &json) {
     JsonObject o = json.as<JsonObject>();
     StatusMsg s{};
@@ -262,6 +263,8 @@ void setup() {
     s.ctx = o["ctx"] | -1;
     s.h5  = o["h5"]  | -1;
     s.wk  = o["wk"]  | -1;
+    strlcpy(s.h5r, o["h5r"] | "", sizeof(s.h5r));
+    strlcpy(s.wkr, o["wkr"] | "", sizeof(s.wkr));
     xQueueOverwrite(statusq, &s);
     req->send(204);
   });
@@ -513,7 +516,10 @@ void loop() {
   //    (ayri kuyruk, notifyActivity yok) -> status akisi cihazi uyanik tutmaz.
   //    Uykuda da tuketilir (buffer guncellenir); cizim yalniz uyanikken (asagida).
   StatusMsg sm;
-  if (xQueueReceive(statusq, &sm, 0) == pdTRUE) hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
+  if (xQueueReceive(statusq, &sm, 0) == pdTRUE) {
+    hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
+    hud.setReset(sm.h5r, sm.wkr);
+  }
 
   // POST /words ile gelen yeni spinner havuzunu AKTIF ET (takas loop'ta -> kilitsiz guvenli).
   // g_spin'e yalniz bu task dokunur; eski heap havuz (varsa) burada free edilir.

@@ -41,10 +41,13 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_love,    CLAWD_LOVE_FRAMES,    110, true,  true,  false, "love"    },  // OKSAMA (surtme): > < + yukselen kalpler
 };
 
-// Bu anim'in kac SATIRINI ciz. Alt bant HUD 2 satiri (spinner + status line) icin
-// bosaltilir: normal anim'ler 58 satira kirpilir (ekran y[24, 24+58*3=198)), altta
-// y[198,240) HUD'a kalir -> ust katmanla cakismaz, titreme yok. Kirpilan satirlar
-// (58-63) clawd'in ALTINDAKI bos fume'dir; clawd govdesi (row<=47) korunur. hacking
-// bile HACK_UP ile yukari kaydigindan klavye row~55'te biter, kirpma disinda kalir.
-// ANIM_AGENTS ise yalniz ust bandi (40) cizer; y[144,198) mini zemini, y[198,240) HUD.
-static inline uint8_t animPushRows(AnimId id) { return id == ANIM_AGENTS ? 40 : 58; }
+// Bu anim'in kac SATIRINI ciz. Alt bant HUD 3 satiri (spinner + reset-sayaci + status
+// line) icin bosaltilir: normal anim'ler 51 satira kirpilir (ekran y[24, 24+51*3=177)),
+// altta y[177,240) HUD'a kalir -> ust katmanla cakismaz, titreme yok. Kirpilan satirlar
+// (51-63) clawd'in ALTINDAKI bos fume'dir; clawd govdesi (row<=47) korunur. hacking
+// HACK_UP=16 ile yukari kaydigindan klavye row~47'de biter, kirpma disinda kalir.
+// ANIM_AGENTS ise yalniz ust bandi cizer; HUD 2->3 satira cikinca bu bant da 40'tan
+// 33'e daraltildi (clawd_anim.py AGENTS_UP 8->16 ile uyumlu, feet row~31 korunur) ki
+// mini sirasina (mini.h ROW_Y=130, alt kenar 170) y[123,177) araliginda yer acilsin:
+// y[24,123) buyuk clawd, y[123,177) mini zemini, y[177,240) HUD (3 satir).
+static inline uint8_t animPushRows(AnimId id) { return id == ANIM_AGENTS ? 33 : 51; }

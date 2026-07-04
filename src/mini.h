@@ -7,8 +7,9 @@
 // Alt-agent(ler) bitip is bitince (main.cpp'de gercek sayac 0'a inince) 4'u de kaybolur.
 // (Kac gercek alt-agent olursa olsun ekranda hep 4 mini gosterilir — sabit sira.)
 //
-// CAKISMA YOK: ANIM_AGENTS anim'i yalniz UST bandi cizer (main.cpp animPushRows=40
-// -> ekran y[24,144)). Mini sirasi bunun ALTINDA, sabit fume (BG) zeminde (y=SIRAY).
+// CAKISMA YOK: ANIM_AGENTS anim'i yalniz UST bandi cizer (main.cpp animPushRows=33
+// -> ekran y[24,123)). Mini sirasi bunun ALTINDA, sabit fume (BG) zeminde (y=SIRAY),
+// ve HUD'un 3 satirlik alt bandinin (y[177,240)) DA USTUNDE kalir (alt kenar 170).
 // Seffaflik/flicker derdi yok: mini tam kare cizilir, eski konum BG ile silinir.
 //
 // RANDOM YOK: tum hareket deterministik sinus salinimidir (sakin, ongorulebilir).
@@ -74,7 +75,7 @@ class MiniFleet {
 
   // Tek sira: 4 mini ekranin altinda, buyuk clawd'in ALTINDA, ortalanmis ve simetrik.
   // Sol-ust kose ev konumlari (spr 40px, aralik 66 -> satir 41..279, 160 etrafinda ortali).
-  static constexpr int ROW_Y  = 150;                 // sabit satir y'si (alt kenar 190 < HUD 216)
+  static constexpr int ROW_Y  = 130;                 // sabit satir y'si (alt kenar 170 < HUD 177)
   static constexpr int SWAY   = 7;                   // saga-sola salinim genligi (px)
   static const int HOME_X[MAXM];                     // her slotun ev x'i (sol kenar)
   static const uint32_t TICK_MS  = 40;               // ~25 fps
