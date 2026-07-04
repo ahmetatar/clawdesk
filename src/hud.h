@@ -1,17 +1,20 @@
 #pragma once
-// clawd HUD — clawd'in ALTINDAKI bosluga iki satir yazan hafif katman.
-// clawd merkezde cizilir; anim'ler 58 satira KIRPILIR (ekran y[24,198)) -> alt
-// serit y[198,240) HUD'a kalir, ust katmanla cakismaz (titreme yok).
+// clawd HUD — clawd'in ALTINDAKI bosluga UC satir yazan hafif katman.
+// clawd merkezde cizilir; anim'ler 51 satira KIRPILIR (ekran y[24,177)) -> alt
+// serit y[177,240) HUD'a kalir, ust katmanla cakismaz (titreme yok).
 //
 // YERLESIM:
 //   sol-ust    (y[0,24)): WiFi SINYAL CUBUKLARI (RSSI'den; bagli=yesil, kopuk=kirmizi).
-//   sol-alt ust satir  (y~208): SPINNER/dusunme flavor metni ("Thinking...", "Crafting..."),
-//                       clawd-turuncu.
-//   sol-alt alt satir  (y~228): CLAUDE CODE STATUS LINE ozeti — "Model  ctx:%  5h:%  wk:%",
-//                       yuzdeler kullanima gore RENKLI (yesil<50, sari<80, kirmizi>=80).
-//   (Onceki sag-alt "tool adi" KALDIRILDI — iki satirlik alt bloga yer acmak icin.)
+//   sol-alt 1. satir (y~188): SPINNER/dusunme flavor metni ("Thinking...", "Crafting..."),
+//                     clawd-turuncu.
+//   sol-alt 2. satir (y~208): RESET SAYACLARI — "5h: (2h32m)   wk: (2d5h)", sonuk GRI
+//                     (statusLine'in ayni renkli parantez-ici sureleri; kullanima gore
+//                     RENKLENMEZ, sadece bilgi).
+//   sol-alt 3. satir (y~228): CLAUDE CODE STATUS LINE ozeti — "Model  ctx:%  5h:%  wk:%",
+//                     yuzdeler kullanima gore RENKLI (yesil<50, sari<80, kirmizi>=80).
+//   (Onceki sag-alt "tool adi" KALDIRILDI — cok satirlik alt bloga yer acmak icin.)
 //
-// Veri: statusLine -> POST /status (model+ctx+5h+wk); flavor -> setAction (olaylardan).
+// Veri: statusLine -> POST /status (model+ctx+5h+wk+h5r+wkr); flavor -> setAction (olaylardan).
 // CIZIM DISIPLINI: yalniz ilgili satir DEGISINCE yeniden cizilir (once bg temizle).
 
 #include <Arduino.h>
@@ -23,7 +26,7 @@ public:
   void begin(TFT_eSPI *tft) {
     _tft = tft;
     _bg  = tft->color565(BG_R, BG_G, BG_B);
-    _wifiDirty = _statusDirty = _actionDirty = true;
+    _wifiDirty = _statusDirty = _actionDirty = _resetDirty = true;
   }
 
   // rssi: WiFi.RSSI() (dBm, negatif). connected=false -> tek kirmizi cubuk.
@@ -55,25 +58,38 @@ public:
     _statusDirty = true;
   }
 
-  // Spinner/dusunme flavor metni (ust satir). Bos -> temizlenir. Renk clawd-turuncu.
+  // Spinner/dusunme flavor metni (1. satir). Bos -> temizlenir. Renk clawd-turuncu.
   void setAction(const char *txt) {
     strlcpy(_action, txt ? txt : "", sizeof(_action));
     _actionDirty = true;
   }
 
-  void markAllDirty() { _wifiDirty = _statusDirty = _actionDirty = true; }
+  // Reset sayaclari (2. satir, GRI): "5h: (2h32m)  wk: (2d5h)". h5r/wkr bos -> "-"
+  // placeholder (statusLine henuz resets_at gondermedi). Host zaten bicimlendirilmis
+  // (time_until tarzi "2h32m"/"3d4h") string yollar; cihaz yalniz cizer.
+  void setReset(const char *h5r, const char *wkr) {
+    const char *a = h5r ? h5r : "", *b = wkr ? wkr : "";
+    if (!strcmp(_h5r, a) && !strcmp(_wkr, b)) return;   // ayni deger -> titreme yok
+    strlcpy(_h5r, a, sizeof(_h5r));
+    strlcpy(_wkr, b, sizeof(_wkr));
+    _resetDirty = true;
+  }
+
+  void markAllDirty() { _wifiDirty = _statusDirty = _actionDirty = _resetDirty = true; }
 
   // Her loop cagrilir; yalniz kirli satirlari cizer. Uyku sirasinda main CAGIRMAZ.
   void render() {
     if (!_tft) return;
     if (_wifiDirty)   { drawWifi();   _wifiDirty   = false; }
     if (_actionDirty) { drawAction(); _actionDirty = false; }
+    if (_resetDirty)  { drawReset();  _resetDirty  = false; }
     if (_statusDirty) { drawStatus(); _statusDirty = false; }
   }
 
 private:
-  static constexpr int SPIN_Y   = 208;    // ust satir (spinner/flavor) dikey orta
-  static constexpr int STATUS_Y = 228;    // alt satir (status line) dikey orta
+  static constexpr int SPIN_Y   = 188;    // 1. satir (spinner/flavor) dikey orta
+  static constexpr int RESET_Y  = 208;    // 2. satir (reset sayaclari, gri) dikey orta
+  static constexpr int STATUS_Y = 228;    // 3. satir (status line) dikey orta
 
   void clearRect(int x, int y, int w, int h) { _tft->fillRect(x, y, w, h, _bg); }
 
@@ -118,7 +134,7 @@ private:
     return x + _tft->textWidth(buf, 2) + 8;
   }
 
-  // Ust satir: spinner/dusunme flavor metni (clawd-turuncu).
+  // 1. satir: spinner/dusunme flavor metni (clawd-turuncu).
   void drawAction() {
     clearRect(0, SPIN_Y - 10, 210, 20);
     if (!_action[0]) return;
@@ -128,7 +144,21 @@ private:
     _tft->drawString(_action, 6, SPIN_Y, 2);
   }
 
-  // Alt satir: model (sonuk gri) + ctx/5h/wk (renkli). Soldan saga dizilir.
+  // 2. satir: reset sayaclari, statusLine ile AYNI sonuk gri (ctx/5h/wk placeholder rengi) —
+  // kullanima gore RENKLENMEZ, sadece "ne zaman dolar" bilgisi. Ikisi de yoksa satir bos kalir.
+  void drawReset() {
+    clearRect(0, RESET_Y - 10, 320, 20);
+    if (!_h5r[0] && !_wkr[0]) return;
+    char buf[40];
+    snprintf(buf, sizeof(buf), "5h: (%s)   wk: (%s)",
+             _h5r[0] ? _h5r : "-", _wkr[0] ? _wkr : "-");
+    _tft->setTextFont(2);
+    _tft->setTextDatum(ML_DATUM);
+    _tft->setTextColor(_tft->color565(120, 120, 132), _bg);   // sonuk gri
+    _tft->drawString(buf, 6, RESET_Y, 2);
+  }
+
+  // 3. satir: model (sonuk gri) + ctx/5h/wk (renkli). Soldan saga dizilir.
   void drawStatus() {
     clearRect(0, STATUS_Y - 11, 320, 23);
     int x = 6;
@@ -148,7 +178,8 @@ private:
   char     _model[12] = {0};
   int      _ctx = -1, _h5 = -1, _wk = -1;
   char     _action[32] = {0};
+  char     _h5r[10] = {0}, _wkr[10] = {0};
   bool     _connected  = false;
   int      _bars       = 1;
-  bool     _wifiDirty = true, _statusDirty = true, _actionDirty = true;
+  bool     _wifiDirty = true, _statusDirty = true, _actionDirty = true, _resetDirty = true;
 };

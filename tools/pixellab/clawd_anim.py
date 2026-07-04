@@ -222,8 +222,9 @@ def anim_idle(n=8):
         out.append(c)
     return out
 
-HACK_UP = 8                                # hacking'i YUKARI kaydir: klavye alt HUD
-                                           # yazilariyla cakismasin (cihaz alt bandi 2 satir).
+HACK_UP = 16                               # hacking'i YUKARI kaydir: klavye alt HUD
+                                           # yazilariyla cakismasin (cihaz alt bandi ARTIK 3 satir ->
+                                           # mascot alani daralinca 8'den 16'ya cikarildi).
 def anim_hacking(n=8):
     """clawd SABIT durur; sol/sag kollari hafif asagi-yukari; gozler hafif tarar;
     onunde klavye, tuslari basiliyor. clawd zINPLAMAZ. TUM sahne HACK_UP kadar yukarida
@@ -440,7 +441,8 @@ def anim_ask(n=8):
 # Ayri, sakin bir "gozetim" pozu (klavye YOK). clawd yukari kaydirilir ki ekranin
 # altinda gercek bir ZEMIN bandi acilsin; firmware o zemine + iki yana mini clawd'lar
 # kondurur. Cihaz bu anim'i yalniz UST satirlari (pushH=40) cizer -> alt bant mini'lere kalir.
-AGENTS_UP = 8                                   # clawd'i kac px yukari cek (main.cpp pushH ile uyumlu)
+AGENTS_UP = 16                                  # clawd'i kac px yukari cek (main.cpp pushH ile uyumlu;
+                                                 # HUD 3 satira cikinca mini sirasina yer acmak icin 8->16)
 def anim_agents(n=8):
     """clawd alt-ajanlarini gozetir: yukari kayip ASAGI kucuk clawd'lara bakar
     (gozler asagi + hafif saga-sola tarama), sakin nefes alir. Klavye yok."""
