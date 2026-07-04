@@ -78,6 +78,43 @@ Ek kanal: **statusline** script'i her render'da model + context %'si + maliyet b
 - **Multi-agent panosu.** Workflow/Task ile birçok ajan koşarken her birini ekranda mini clawd olarak gör.
 - **Günün özeti** (`SessionEnd`): kaç araç, kaç dosya, kaç commit — clawd küçük rapor sunar.
 
+## F) v2 wow fikirleri (beyin fırtınası)
+
+Aşağıdakiler mevcut protokole (`clawd-device-protocol.md`) dayanır; çoğu **yeni protokol olayı gerektirmez**, cihaz zaten aldığı olaylardan türetir.
+
+### F1) Ters kanal — cihazdan Claude Code'a (izin'in ötesi)
+Şu an sadece `/perm` cihaz→PC. Onu genişletmek en büyük etki:
+- **Dokun → "devam et" enjekte et.** `Stop`'tan sonra clawd sana bakarken kafasına dokununca cihaz bir "kuyruğa alınmış prompt" tutar (`continue` / son promptu tekrarla). Bir sonraki hook onu çeker → masaüstü "ileri" tuşu.
+- **Basılı tut → interrupt.** Uzun/yanlış giden işte basılı tutmak bir "iptal bayrağı" set eder; koşan `PreToolUse`/poll bunu görüp `deny`'a düşer. Fiziksel ESC.
+- **Swipe → hızlı yanıt.** İzin dışı "evet/hayır/1/2" tarzı Notification'larda yön kaydırması = seçim.
+
+### F2) Gerçek veriyle drama — HUD `wk` (kota) ve `ctx`'i sömür
+- **Kota tükeniyor paniği.** Haftalık kota %90'ı geçince clawd terler, ışıkları kısar, "patron token bitiyor" modu; %100'de mola/uyku. Veri zaten `/status`'ta.
+- **Context = kahve/enerji** (A'daki barın karakter hâli): `ctx` doldukça clawd yorulur, `compact`'ta defrag → sonra taze döner.
+- **Commit ağırlığı.** `git commit`'te diff büyüklüğüne göre clawd ya hafifçe bayrak diker ya da devasa commit'i zor kaldırır 🏋️ (hook diff satır sayısını `d`'ye koyar).
+
+### F3) Kalıcı Tamagotchi — NVS'te durum
+- **Kaç gün üst üste kodladın (streak).** Karar verilen tasarım (v1 için ertelendi):
+  - **Gün ölçütü:** o gün en az bir `edit` (Edit/Write/MultiEdit) **veya** `git commit/push`; sadece açıp bakmak saymaz. Cihaz zaten `tool.pre g=edit` / `git` alıyor → protokol değişmez.
+  - **State NVS'te:** `streak`, `best`, `lastDay` — `lastDay` **epoch-gün** (NTP epoch/86400 + tz) olarak, `+1` aritmetiği temiz.
+  - **Gösterim (çapa):** günün ilk `edit`/`commit`'inde (streak'in gerçekten arttığı an) ~2 sn "🔥 DAY N" kutlaması, sonra normal HUD. Aynı gün 2. oturumda tekrar patlamaz.
+  - **Kırılma:** aradan sonra streak 1'e döner; kısa "seri kırıldı, en iyin N'di" hüzün anı.
+  - **Notlar:** NTP senkron olmadan sayaca dokunma; bu "clawd'ın tanık olduğu" günler (cihaz kapalıyken görmez). Milestone (7/30/100) özel kutlaması sonraki katman.
+- **Günün karnesi tarihçesi.** `session.end` özetini sakla; dokunmatikle **günü geri sar** — o günün araç zaman çizelgesini hızlandırılmış animasyon oynat (touch = scrubber).
+
+### F4) Masadan uzakken "gel buraya" — kademeli çağrı
+`Notification kind=idle` (Claude senin girdini bekliyor) gelince clawd önce el sallar, cevapsız kalırsan çırpınır, en sonda belirgin ses/animasyon. İzin ekranını kaçırmama fiziksel dürtü — cihazı "gerekli" yapan tek özellik bu olabilir.
+
+### F5) Sonifikasyon — "kulakla kod takibi"
+Her tool grubuna (`exec/edit/read/web/agent`) kısa, ayırt edilebilir ton. Oturum bir ritme dönüşür; ekrana bakmadan "şimdi build / şimdi düzenliyor" duyarsın. Başarı akışı da müzikleşir (hata=sad trombone zaten B'de).
+
+### F6) Ambient ruh hali — oturum termometresi
+`tool.post ok` başarı/hata oranına göre **ekran arka plan** renk sıcaklığı yavaşça kayar → göz ucuyla "oturum iyi mi kötü mü" hissi.
+> ⚠️ Bu kartta saf kırmızı LED (GPIO4) ve LDR ölü — bunu RGB üzerinden değil **ekran arka planı** üzerinden yap; "oda karardı→uyku" fikri de LDR'siz kurulmalı.
+
+### F7) Sadık ayna — terminale bakmayı bırak
+Spinner *kelime havuzu* eşitli ama canlı sayaç yok. Elapsed süre + token/maliyet + "esc to interrupt" ipucunu `/status`'a ekleyip cihazda göster → terminale bakmadan glance-able harici durum çubuğu.
+
 ---
 
 ## Köprü mimarisi
