@@ -485,6 +485,141 @@ def anim_love(n=8):
         out.append(c)
     return out
 
+# --- beyin: PixelLab (08_brain.py) — baglam-doluluk gostergesi. clawd deterministik
+# kalir; PixelLab yalniz "beyin" elementini uretir (hibrit recete, kalp ile ayni yontem).
+def _load_brain_spr():
+    hp = os.path.join(HERE, "out/brain.png")
+    if not os.path.exists(hp): return None
+    im = Image.open(hp).convert("RGBA"); px = im.load(); w, h = im.size
+    bg = px[0, 0][:3]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if all(abs((r, g, b)[k] - bg[k]) <= 45 for k in range(3)):
+                px[x, y] = (0, 0, 0, 0)
+    bb = im.getchannel("A").getbbox()
+    return im.crop(bb) if bb else None
+BRAIN_SPR = _load_brain_spr()
+
+def _brain_at(th):
+    """BRAIN_SPR'yi th px yuksekliginde, oranli genislikte olcekle."""
+    w, h = BRAIN_SPR.size
+    tw = max(1, round(w * th / h))
+    return BRAIN_SPR.resize((tw, th), Image.NEAREST)
+
+# HEPSI AYNI sicak kirmizi-amber aile (gok kusagi gibi gorunmesin diye — eskiden
+# bos=mor-gri + yuzey=krem-sari + dolum=kirmizi/amber FARKLI ailelerdi, bir arada
+# gogun kusagi gibi okunuyordu). Simdi tek ailede: bos=sonuk/soluk, dolu=canli/doygun.
+BRAIN_LOW     = (120, 96, 92, 255)    # bos/"cam" hissi (soluk, ayni sicak aile — SADECE gri degil)
+BRAIN_FULL_LO = (196, 40, 44, 255)    # sivi taban (koyu kirmizi)
+BRAIN_FULL_HI = (250, 150, 64, 255)   # sivi yuzeye yakin (amber)
+BRAIN_SURF    = (255, 196, 132, 255)  # parlak yuzey cizgisi (amber'in acik tonu, SARI/krem DEGIL)
+
+def _brain_shade_map(spr):
+    """Sprite'in KENDI kivrim golgelerini (koyu/acik pembe cizgiler) parlaklik orani
+    olarak cikar (ortalamaya gore normalize) — dolum rengi bu oranla carpilinca
+    kivrimlar HER doluluk seviyesinde gorunur kalir (aksi halde duz sivi rengi
+    beyin dokusunu tamamen ortup 'ne oldugu belirsiz bir yuvarlak'a donusturuyordu)."""
+    w, h = spr.size; sp = spr.load()
+    lums = [sum(sp[x, y][:3]) for y in range(h) for x in range(w) if sp[x, y][3] > 0]
+    avg = (sum(lums) / len(lums)) if lums else 384.0
+    shade = {}
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = sp[x, y]
+            if a == 0: continue
+            shade[(x, y)] = min(1.3, max(0.55, sum((r, g, b)) / avg))
+    return shade
+
+def draw_brain_gauge(c, cx, cy, th, fill):
+    """(cx,cy) MERKEZLI beyin; th px yukseklik; fill 0..1 doluluk orani — BARDAK GIBI
+    asagidan yukari dolar. Bos kisim sonuk/cam hissi, dolu kisim sicak kirmizi->amber
+    sivi + parlak yuzey cizgisi (context doluyor gostergesi). Kivrim dokusu (shade map)
+    HER katmanda korunur ki beyin her doluluk seviyesinde 'beyin gibi' okunsun."""
+    if BRAIN_SPR is None: return
+    spr = _brain_at(th); sp = spr.load(); w, h = spr.size
+    shade = _brain_shade_map(spr)
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0)); op = out.load()
+    level_y = h - round(fill * h)                    # bu satirdan asagisi "dolu"
+    for y in range(h):
+        for x in range(w):
+            a = sp[x, y][3]
+            if a == 0: continue
+            sh = shade[(x, y)]
+            if y < level_y - 1:
+                base = BRAIN_LOW
+            elif y <= level_y:
+                base = BRAIN_SURF
+            else:
+                t = (y - level_y) / max(1, h - level_y)
+                base = tuple(BRAIN_FULL_HI[k] * (1 - t) + BRAIN_FULL_LO[k] * t for k in range(3))
+            col = tuple(min(255, round(base[k] * sh)) for k in range(3))
+            op[x, y] = (*col, a)
+    c.alpha_composite(out, (cx - w // 2, cy - h // 2))
+
+def draw_brain_plain(c, cx, cy, th):
+    """Beyni PixelLab'in KENDI renkleriyle (dolum efekti yok) (cx,cy) merkezli ciz."""
+    if BRAIN_SPR is None: return
+    spr = _brain_at(th)
+    c.alpha_composite(spr, (cx - spr.size[0] // 2, cy - spr.size[1] // 2))
+
+BRAIN_CX, BRAIN_CY, BRAIN_TH = 32, 8, 15    # kafa ustunde ortali (clawd CY=17'nin hemen ustu)
+
+def anim_brain_full(n=16):
+    """Context doluyor: clawd sakin nefes alir, bas ustundeki beyin BARDAK GIBI yavas
+    yavas dolar, full olunca tekrar bosalir — dongu tekrarlanir; STRES isareti olarak
+    yanaktan (oops'taki gibi) ter damlasi surekli dokulur. DIM/SLEEP'e gecmeden ONCE,
+    aktif-bostayken context kritik seviyedeyken gosterilir."""
+    out = []
+    for i in range(n):
+        ph = i / n * 2 * math.pi
+        fill = 0.5 - 0.5 * math.cos(ph)                       # 0 -> 1 -> 0 tek dongude
+        sy = 1.0 - 0.05 * (0.5 - 0.5 * math.cos(ph))          # yumusak nefes
+        nh = max(1, int(round(CH * sy)))
+        cl = clawd_variant()
+        cl = cl.resize((CW, nh), Image.NEAREST)
+        c = base_canvas()
+        c.alpha_composite(cl, (CX, CY + (CH - nh)))
+        draw_brain_gauge(c, BRAIN_CX, BRAIN_CY, BRAIN_TH, fill)
+        draw_sweat(c, i)                                       # stres: ter damlasi (oops ile ayni cizim)
+        out.append(c)
+    return out
+
+# --- compact: PreCompact -> beyin gorunur (dolum yok, sakin/dogal renk) + ustunde
+# minik yildizlar bagimsiz fazlarla yanip soner ("temizleniyor" hissi). clawd gozleri
+# KAPALI (sleep gozleri, huzurlu "zihni durulama" pozu) ---
+STAR_COL = (255, 236, 158, 255)
+_STAR_PX = [(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)]     # minik elmas/artı yildiz
+def draw_star(c, cx, cy, bright):
+    if bright <= 0: return
+    a = max(0, min(255, round(255 * bright)))
+    spr = Image.new("RGBA", (3, 3), (0, 0, 0, 0)); sp = spr.load()
+    for (dx, dy) in _STAR_PX: sp[dx, dy] = (*STAR_COL[:3], a)
+    c.alpha_composite(spr, (cx - 1, cy - 1))
+
+# (x, y, faz) — bagimsiz sinus fazlariyla sirayla yanip soner (hepsi ayni anda degil)
+STAR_DEFS = [(16, 3, 0.0), (48, 4, 0.6), (20, 15, 1.3), (44, 16, 2.1), (32, -1, 2.8)]
+STAR_DEFS = [(x, max(0, y), ph) for (x, y, ph) in STAR_DEFS]
+
+def anim_compact(n=12):
+    """Compact calisiyor: beyin gorunur (dogal renk, dolum YOK), clawd huzurlu (gozler
+    kapali) nefes alir, ustunde minik yildizlar tek tek yanip soner (zihin temizleniyor)."""
+    out = []
+    for i in range(n):
+        ph = i / n * 2 * math.pi
+        sy = 1.0 - 0.04 * (0.5 - 0.5 * math.cos(ph))
+        nh = max(1, int(round(CH * sy)))
+        cl = clawd_variant(eyes="sleep")
+        cl = cl.resize((CW, nh), Image.NEAREST)
+        c = base_canvas()
+        c.alpha_composite(cl, (CX, CY + (CH - nh)))
+        draw_brain_plain(c, BRAIN_CX, BRAIN_CY, BRAIN_TH)
+        for (sx, sy2, sph) in STAR_DEFS:
+            b = math.sin(ph + sph)
+            if b > 0: draw_star(c, sx, sy2, b)
+        out.append(c)
+    return out
+
 # --- tickle: CIFT-DOKUNUS -> gidiklanma. clawd hizli saga-sola titrer (kikirder),
 # gozler > < ; ustte sembol yok. oops'un yatay titremesiyle ayni teknik, mutlu goz. ---
 def anim_tickle(n=8):
@@ -502,7 +637,8 @@ def anim_tickle(n=8):
 
 ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
          "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
-         "agents": anim_agents, "love": anim_love, "tickle": anim_tickle}
+         "agents": anim_agents, "love": anim_love, "tickle": anim_tickle,
+         "brain_full": anim_brain_full, "compact": anim_compact}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")

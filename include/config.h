@@ -45,6 +45,11 @@ constexpr uint32_t T_SLEEP_MS = 120000; // 120 sn: ekrani sondur + uyku
 // Uzun tool'lardan buyuk olmali (build/test'ler dakikalar surebilir).
 constexpr uint32_t T_BUSY_MAX_MS = 600000;  // 10 dk emniyet tavani
 
+// context (ctx%) bu esigi (statusLine ile AYNI "kirmizi" esik) gecince, aktif-bosta
+// (ANIM_IDLE) iken clawd baglam-doluluk gostergesine (ANIM_BRAIN_FULL) gecer — DIM/
+// SLEEP'e gecmeden ONCE bir uyari katmani. Esik altina donunce idle'a geri doner.
+constexpr int CTX_BRAIN_THRESH = 80;
+
 // arka isik parlaklik seviyeleri (8-bit LEDC duty, 0..255)
 constexpr uint8_t  BL_FULL = 255;       // aktif: tam parlaklik
 constexpr uint8_t  BL_DIM  = 28;        // ~%11: kisik ama okunur/canli
