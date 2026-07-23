@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# clawd statusLine KURULUM — Claude Code'un statusLine'ini clawd wrapper'ina baglar.
-# Wrapper senin MEVCUT statusLine'ini AYNEN calistirir (CLI gorunumu degismez) +
-# ayrica cihaza `POST /status` gonderir (device HUD ust bandi = model/ctx/kota).
+# clawd statusLine INSTALL — wires Claude Code's statusLine to the clawd wrapper.
+# The wrapper runs your EXISTING statusLine verbatim (the CLI look is unchanged) +
+# also sends `POST /status` to the device (device HUD top band = model/ctx/quota).
 #
-# Idempotent (tekrar calistirmak zararsiz). Geri almak: --uninstall.
+# Idempotent (safe to re-run). To revert: --uninstall.
 #
-#   bash clawd-statusline-setup.sh              # kur
-#   bash clawd-statusline-setup.sh --uninstall  # eski statusLine'a don
+#   bash clawd-statusline-setup.sh              # install
+#   bash clawd-statusline-setup.sh --uninstall  # restore the old statusLine
 #
-# Neden gerekli: Claude Code plugin'lere ANA statusLine'i manifest'ten VERDIRMEZ
-# (yalniz agent/subagentStatusLine). Tek desteklenen yol: settings.json'daki
-# statusLine.command'i plugin'in wrapper'ina yonlendirmek -> bu script onu yapar.
+# Why it's needed: Claude Code does NOT let plugins set the MAIN statusLine from the
+# manifest (only agent/subagentStatusLine). The only supported path: point
+# statusLine.command in settings.json at the plugin's wrapper -> this script does that.
 set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +19,7 @@ SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 INNERFILE="$HOME/.claude/.clawd-statusline-inner"
 MARK="clawd-statusline.sh"
 
-command -v jq >/dev/null 2>&1 || { echo "HATA: jq gerekli (brew install jq)"; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "ERROR: jq required (brew install jq)"; exit 1; }
 mkdir -p "$(dirname "$SETTINGS")"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 
@@ -32,30 +32,30 @@ if [ "${1:-}" = "--uninstall" ]; then
       inner="$(cat "$INNERFILE" 2>/dev/null || echo "")"
       if [ -n "$inner" ]; then
         write ".statusLine = {type:\"command\", command:\"$(printf '%s' "$inner" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}"
-        echo "geri alindi: statusLine eski komuta dondu."
+        echo "reverted: statusLine restored to the previous command."
       else
         write 'del(.statusLine)'
-        echo "geri alindi: statusLine kaldirildi (onceden yoktu)."
+        echo "reverted: statusLine removed (there was none before)."
       fi
       rm -f "$INNERFILE"
       ;;
-    *) echo "clawd statusLine kurulu degil, yapacak sey yok." ;;
+    *) echo "clawd statusLine is not installed, nothing to do." ;;
   esac
   exit 0
 fi
 
-# --- kurulum ---
+# --- install ---
 case "$cur" in
-  *"$MARK"*) echo "zaten kurulu (statusLine clawd wrapper'ina bagli). Degisiklik yok."; exit 0 ;;
+  *"$MARK"*) echo "already installed (statusLine wired to the clawd wrapper). No change."; exit 0 ;;
 esac
 
-# Mevcut komutu 'inner' olarak sakla (wrapper onu aynen calistirir).
+# Save the current command as 'inner' (the wrapper runs it verbatim).
 printf '%s' "$cur" > "$INNERFILE"
 newcmd="bash '$WRAPPER'"
 write ".statusLine = {type:\"command\", command:\"$(printf '%s' "$newcmd" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}"
 
-echo "kuruldu."
-[ -n "$cur" ] && echo "  mevcut statusLine korundu (wrapper icinden calisir)." \
-              || echo "  onceden statusLine yoktu; cihaz yansimasi aktif, CLI'da ekstra satir yok."
-echo "  cihaz adresi: ${CLAWD_HOST:-clawd.local} (farkliysa .claude/settings.local.json env: CLAWD_HOST)."
-echo "  geri almak: bash '$DIR/clawd-statusline-setup.sh' --uninstall"
+echo "installed."
+[ -n "$cur" ] && echo "  your existing statusLine is preserved (runs inside the wrapper)." \
+              || echo "  there was no statusLine before; device mirroring is active, no extra line in the CLI."
+echo "  device address: ${CLAWD_HOST:-clawd.local} (if different, set env CLAWD_HOST in .claude/settings.local.json)."
+echo "  to revert: bash '$DIR/clawd-statusline-setup.sh' --uninstall"

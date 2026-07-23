@@ -1,34 +1,35 @@
 #!/usr/bin/env bash
-# clawd hook — Claude Code olayini clawd cihazina (clawd.local) POST /e ile yollar.
+# clawd hook — sends the Claude Code event to the clawd device (clawd.local) via POST /e.
 #
-# TASARIM (bkz. clawd-device-protocol.md + src/main.cpp mapEvent):
-#   - FIRE-AND-FORGET: Claude Code'u ASLA yavaslatma/bloklama. curl arka planda,
-#     kisa timeout; her zaman `exit 0`, stdout'a HICBIR SEY yazma (PreToolUse'da
-#     yanlis cikti araci bloklayabilir).
-#   - SAKIN AMA CANLI: firmware `if (id != curAnim) setAnim(...)` ile ayni animasyona
-#     giden olayi yutar -> tool.pre'yi her araca yollasak da titreme olmaz. Titreme
-#     yalniz hacking<->idle GIDIP GELMESINDEN cikardi; o yuzden PostToolUse basaride
-#     idle GONDERMEYIZ. Bir turun akisi: think -> hacking -> (git'te happy) -> idle.
+# DESIGN (see clawd-device-protocol.md + src/main.cpp mapEvent):
+#   - FIRE-AND-FORGET: NEVER slow down/block Claude Code. curl in the background,
+#     short timeout; always `exit 0`, write NOTHING to stdout (in PreToolUse a
+#     wrong output can block the tool).
+#   - CALM BUT ALIVE: firmware swallows an event that leads to the same animation via
+#     `if (id != curAnim) setAnim(...)` -> even if we send tool.pre for every tool there
+#     is no flicker. Flicker only came from GOING BACK AND FORTH hacking<->idle; that is
+#     why we DON'T SEND idle on PostToolUse success. A turn's flow: think -> hacking ->
+#     (happy on git) -> idle.
 #
-# OLAY ESLEMESI:
+# EVENT MAPPING:
 #   UserPromptSubmit    -> {k:"prompt.submit"}          -> THINK
-#   PreToolUse (Task)   -> {k:"agent.spawn"}            -> AGENTS pozu + altta 4 mini clawd BELIRIR
-#   PreToolUse (diger)  -> {k:"tool.pre", d:{g,tool,s}} -> HACKING (tekrar = no-op)
-#   SubagentStop        -> {k:"agent.done"}             -> is bitince (sayac 0) 4 mini de GIDER
-#   PostToolUse (Bash)  -> git commit/push ise {k:"git"} -> HAPPY (aksi halde sessiz)
-#   PostToolUseFailure  -> {k:"tool.post", d:{ok:false}} -> OOPS (guvenilir hata sinyali)
-#   PreCompact          -> {k:"compact"}                -> COMPACT (beyin + yanip sonen yildizlar)
+#   PreToolUse (Task)   -> {k:"agent.spawn"}            -> AGENTS pose + 4 mini clawds APPEAR at the bottom
+#   PreToolUse (other)  -> {k:"tool.pre", d:{g,tool,s}} -> HACKING (repeat = no-op)
+#   SubagentStop        -> {k:"agent.done"}             -> when work is done (counter 0) all 4 minis LEAVE
+#   PostToolUse (Bash)  -> if git commit/push then {k:"git"} -> HAPPY (otherwise silent)
+#   PostToolUseFailure  -> {k:"tool.post", d:{ok:false}} -> OOPS (reliable error signal)
+#   PreCompact          -> {k:"compact"}                -> COMPACT (brain + blinking stars)
 #   SessionStart        -> {k:"session.start"}          -> HAPPY
 #   Stop                -> {k:"session.stop"}           -> IDLE
 #
-# Cihaz adresi. VARSAYILAN = clawd.local (mDNS) -> tasinabilir, IP bilmeye gerek
-# yok, saglikli aglarda kutudan calisir. mDNS'in yavas/olu oldugu aglarda cihazin
-# DOGRUDAN IP'sini ver -> sifir DNS gecikmesi. Nereye? Projenin
-# .claude/settings.local.json'una (kisisel, gitignore'lu) env blogu:
+# Device address. DEFAULT = clawd.local (mDNS) -> portable, no need to know the IP,
+# works out of the box on healthy networks. On networks where mDNS is slow/dead, give
+# the device's DIRECT IP -> zero DNS delay. Where? In the project's
+# .claude/settings.local.json (personal, gitignored) env block:
 #     { "env": { "CLAWD_HOST": "192.168.1.NN" }, "enabledPlugins": {...} }
-# Claude Code bu env'i hook'a enjekte eder. En saglami: router'da cihaza DHCP
-# rezervasyonu tanimla, IP sabit kalsin. (Detay: bu klasordeki README.md.)
-# curl ARKA PLANDA + ciktisi /dev/null oldugundan bash aninda doner; Claude beklemez.
+# Claude Code injects this env into the hook. Most robust: define a DHCP reservation
+# for the device on the router so the IP stays fixed. (Details: README.md in this folder.)
+# Since curl runs IN THE BACKGROUND + output goes to /dev/null, bash returns instantly; Claude does not wait.
 
 set -u
 
@@ -42,8 +43,8 @@ jqr() { printf '%s' "$INPUT" | jq -r "$1" 2>/dev/null; }
 ev="$(jqr '.hook_event_name // empty')"
 tool="$(jqr '.tool_name // empty')"
 
-# Claude Code araci -> protokol grubu (d.g). Firmware su an grup'a gore dallanmiyor
-# ama protokol normalizasyonu ileri-uyumlu kalsin.
+# Claude Code tool -> protocol group (d.g). The firmware does not currently branch on
+# group, but keep the protocol normalization forward-compatible.
 group() {
   case "$1" in
     Bash)                               echo exec ;;
@@ -66,16 +67,16 @@ case "$ev" in
     ;;
 
   PreToolUse)
-    # ALT-AGENT: Task/Agent tool'u = Claude bir alt-agent aciyor. Sıradan tool.pre
-    # yerine ozel agent.spawn yolla -> cihazda buyuk maskot AGENTS pozuna gecer
-    # (yukari kayip asagi bakar) ve altta 4 mini clawd BIRDEN belirir; is bitince
-    # (SubagentStop -> agent.done, sayac 0) hepsi kaybolur.
-    # (Tool adi ortama gore "Task" ya da "Agent" olabilir -> ikisini de yakala.)
+    # SUB-AGENT: Task/Agent tool = Claude is spawning a sub-agent. Instead of an ordinary
+    # tool.pre send a special agent.spawn -> on the device the big mascot switches to the
+    # AGENTS pose (slides up and looks down) and 4 mini clawds APPEAR AT ONCE at the bottom;
+    # when the work is done (SubagentStop -> agent.done, counter 0) they all disappear.
+    # (The tool name may be "Task" or "Agent" depending on the environment -> catch both.)
     if [ "$tool" = "Task" ] || [ "$tool" = "Agent" ]; then
       body='{"k":"agent.spawn"}'
     else
       g="$(group "$tool")"
-      # en anlamli tek ozet: komut / dosya / desen / url
+      # the single most meaningful summary: command / file / pattern / url
       s="$(jqr '[.tool_input.command, .tool_input.file_path, .tool_input.pattern, .tool_input.url]
                 | map(select(. != null and . != "")) | (.[0] // "") | tostring')"
       s="${s:0:40}"
@@ -84,18 +85,18 @@ case "$ev" in
     ;;
 
   PostToolUse)
-    # AskUserQuestion/ExitPlanMode CEVAPLANINCA: clawd "?" (ask) pozundan ciksin AMA
-    # idle'a DUSMESIN. PostToolUse bu tool bitince (=kullanici cevaplayinca) tetiklenir;
-    # cevaptan sonra Claude cevabi isleyip DUSUNMEYE gecer, o yuzden think:on yolla ->
-    # firmware ANIM_THINK'e gecer (satir 77) ve tool HUD'unu temizler. Boylece "?"
-    # asili kalmaz ve bir sonraki gercek olaya (tool.pre/stop) kadar think'te bekler.
+    # When AskUserQuestion/ExitPlanMode IS ANSWERED: clawd should leave the "?" (ask) pose
+    # BUT NOT FALL to idle. PostToolUse fires when this tool finishes (= when the user
+    # answers); after the answer Claude processes it and MOVES TO THINKING, so send think:on
+    # -> firmware switches to ANIM_THINK (line 77) and clears the tool HUD. This way the "?"
+    # does not stay stuck and it waits in think until the next real event (tool.pre/stop).
     case "$tool" in
       AskUserQuestion|ExitPlanMode)
         body='{"k":"think","d":{"on":true}}'
         ;;
       *)
-        # Yalniz git commit/push basarisi -> kutlama. Diger basarilarda SESSIZ kal
-        # (hacking state'i bozulmasin, titreme olmasin).
+        # Only git commit/push success -> celebrate. Stay SILENT on other successes
+        # (don't disrupt the hacking state, no flicker).
         cmd="$(jqr '.tool_input.command // ""')"
         op=""
         case "$cmd" in
@@ -109,11 +110,11 @@ case "$ev" in
     ;;
 
   PostToolUseFailure)
-    # Arac HATASI -> oops (facepalm). tool_error.isError bu event'te hep true.
+    # Tool ERROR -> oops (facepalm). tool_error.isError is always true in this event.
     body='{"k":"tool.post","d":{"ok":false}}'
     ;;
 
-  SubagentStop)  body='{"k":"agent.done"}' ;;   # bir alt-agent bitti -> yan mini "yurur gider"
+  SubagentStop)  body='{"k":"agent.done"}' ;;   # a sub-agent finished -> a side mini "walks away"
   PreCompact)    body='{"k":"compact"}' ;;
   SessionStart)  body='{"k":"session.start"}' ;;
   Stop)          body='{"k":"session.stop"}' ;;
@@ -123,7 +124,7 @@ esac
 
 [ -z "$body" ] && exit 0
 
-# Fire-and-forget: kisa timeout + arka plan; cihaz erisemese bile Claude takilmaz.
+# Fire-and-forget: short timeout + background; Claude won't hang even if the device is unreachable.
 curl -s --max-time "$TIMEOUT" -X POST "$URL" \
   -H 'content-type: application/json' -d "$body" >/dev/null 2>&1 &
 

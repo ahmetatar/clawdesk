@@ -9,6 +9,13 @@ PC tarafındaki eksik köprüdür. Protokol: repo kökündeki `clawd-device-prot
 
 ---
 
+## En kolay yol: `./install.sh`
+
+Repo kökünde `./install.sh` çalıştır — WiFi'yı sorar, cihazı flaslar, plugin'i bu
+makinede **global** kurar (`--scope user`, her projede aktif olur), statusLine ve
+spinner köprülerini bağlar. Geri almak için `./uninstall.sh`. Aşağıdaki manuel
+adımlar bu script'in elle karşılığıdır — install.sh'i kullanıyorsan gerek yok.
+
 ## Gereksinimler
 
 1. **Çalışan bir clawd cihazı** — CYD'ye firmware flash'lanmış ve **kendi WiFi'na**
@@ -20,11 +27,12 @@ PC tarafındaki eksik köprüdür. Protokol: repo kökündeki `clawd-device-prot
 
 Yeni birine cihazı verdiğinde tek gerçek uğraş: (1) firmware'i kendi WiFi'yla bir
 kez flash'lamak, (2) plugin'i kurmak, (3) mDNS ağında çalışmıyorsa cihazın IP'sini
-bir yere yazmak (aşağıda). Kod tarafında elle düzenleme YOK.
+bir yere yazmak (aşağıda). Kod tarafında elle düzenleme YOK. `install.sh` bu üç
+adımı da yapar.
 
 ---
 
-## Kurulum (aktif projeye)
+## Kurulum (manuel)
 
 Plugin, repo içinde bir **yerel marketplace** olarak durur. Yolu **kendi klonuna
 göre** ver (aşağısı örnek — `git clone` yaptığın dizini kullan):
@@ -33,37 +41,44 @@ göre** ver (aşağısı örnek — `git clone` yaptığın dizini kullan):
 # 1) marketplace'i tanıt (bir kez; <REPO> = klonladığın yol)
 /plugin marketplace add <REPO>/tools/clawd-plugin
 
-# 2) aktif projede etkinleştir (kişisel, gitignore'lu kapsam)
+# 2a) GLOBAL etkinleştir (install.sh'in yaptığı: her projede aktif)
+/plugin install clawd@clawd --scope user
+
+# 2b) ya da yalnız bu proje icin (kişisel, gitignore'lu kapsam)
 /plugin install clawd@clawd --scope local
 ```
 
-Bu, projenin `.claude/settings.local.json`'ına `enabledPlugins` girdisi yazar.
-Hook'lar **yeni** bir Claude Code oturumunda (ya da `/reload-plugins` sonrası)
-devreye girer.
+`--scope user` global ayarlara (`~/.claude/settings.json` `enabledPlugins`) yazar;
+`--scope local` projenin `.claude/settings.local.json`'ına. Hook'lar **yeni** bir
+Claude Code oturumunda (ya da `/reload-plugins` sonrası) devreye girer.
 
 ## Kaldırma
 
 ```
-claude plugin disable clawd@clawd     # geçici kapat
-claude plugin uninstall clawd@clawd   # tamamen kaldır
+claude plugin disable clawd@clawd            # geçici kapat
+claude plugin uninstall clawd@clawd -s user  # tamamen kaldır (scope'u kurulumla eşleştir)
 ```
+
+Ya da repo kökünde `./uninstall.sh` — plugin + statusLine + `CLAWD_HOST`'un
+hepsini tek seferde geri alır.
 
 ---
 
 ## Cihaz adresi — IP'ni nereye gireceksin
 
-**Varsayılan hedef `clawd.local`** (mDNS). Ağında mDNS sağlıklıysa **hiçbir şey
-girmene gerek yok**, kutudan çalışır.
+**`clawd.local` (mDNS) KULLANILMAZ.** Bazı ağlarda/extender'larda mDNS yavaş
+çalışır ya da tamamen düşer → event iletimi gecikir/kopar. Bunun yerine `install.sh`
+cihaza her zaman **sabit bir IP** atar (bağlı olduğun ağın gateway/subnet'ini
+otomatik tespit ederek) ve o IP'yi doğrudan kullanır — sıfır DNS gecikmesi,
+sıfır kopma riski.
 
-Ağında mDNS yavaş/çalışmıyorsa (bazı router'larda olur — olaylar geç gelir/düşer),
-cihazın **doğrudan IP'sini** ver. İki adım:
-
-**1) Cihazın IP'sini öğren** — şu yollardan biri:
+**1) Cihazın IP'sini öğren** (`install.sh` zaten kendisi yapar; elle gerekirse):
 - Seri monitör: cihaz açılışta `[clawd] WiFi OK. IP: 192.168.x.y` yazar.
 - Router'ın DHCP istemci listesi (host adı: `clawd`).
-- mDNS bir kez çözülürse: `curl http://clawd.local/health` → cevap veren IP.
 
-**2) IP'yi projenin `.claude/settings.local.json`'una yaz** (kişisel, gitignore'lu):
+**2) IP'yi yaz** — `install.sh` bunu **global** `~/.claude/settings.json`'a yazar
+(`env.CLAWD_HOST`, tüm projelerde geçerli). Elle/tek proje için aynısını
+`.claude/settings.local.json`'a da yazabilirsin (kişisel, gitignore'lu):
 
 ```json
 {
@@ -77,11 +92,12 @@ cihazın **doğrudan IP'sini** ver. İki adım:
 ```
 
 Claude Code bu `env`'i hook'a enjekte eder → isim çözme adımı tamamen atlanır,
-sıfır DNS gecikmesi. **Kod dosyasına dokunmazsın**; her makine kendi IP'sini burada
-tutar (bu dosya paylaşılmaz).
+sıfır DNS gecikmesi. Her makine kendi IP'sini burada tutar (bu dosya paylaşılmaz).
 
-> **En sağlamı:** router'da cihaza **DHCP rezervasyonu** tanımla — IP kalıcı olarak
-> sabit kalır, bir daha uğraşmazsın.
+> **Ağ değiştirirsen** (ev ↔ hotspot vb.): `./install.sh`'i tekrar çalıştır — yeni
+> ağın gateway/subnet'ini otomatik tespit edip sabit IP'yi ona göre yeniden yazar.
+> `./uninstall.sh` sabit IP'yi eski bir değere DÖNDÜRMEZ, doğrudan kapatır (DHCP'ye
+> döner).
 
 `CLAWD_TIMEOUT` (sn, varsayılan 2) ile curl üst sınırını da ayarlayabilirsin. curl
 **arka planda** çalışır ve çıktısı `/dev/null`'a gider; bu yüzden timeout ne olursa
@@ -147,7 +163,7 @@ bash "<plugin>/scripts/clawd-statusline-setup.sh"
 ```
 Kurulum senin **mevcut statusLine'ını AYNEN korur** (wrapper onu içinden çalıştırır,
 CLI görünümü değişmez) ve yanında cihaza POST ekler. Geri almak: aynı script `--uninstall`.
-Cihaz `clawd.local`'de değilse `CLAWD_HOST`'u `settings.local.json` env'inden ver.
+Cihaz adresi `CLAWD_HOST`'tan gelir (`install.sh` bunu global olarak sabit IP'ye ayarlar).
 
 ---
 
@@ -177,7 +193,7 @@ bash "<plugin>/scripts/clawd-spinner-sync.sh" --preview
   `bash "<plugin>/scripts/clawd-spinner-extract.sh" --header > src/spinner_words.h`
   → firmware'i yeniden flash'la.
 
-Cihaz adresi yine `CLAWD_HOST` (varsayılan `clawd.local`) ile verilir.
+Cihaz adresi yine `CLAWD_HOST` ile verilir (`install.sh` sabit IP'yi buraya yazar).
 
 ---
 

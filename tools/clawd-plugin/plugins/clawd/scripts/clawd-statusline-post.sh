@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# clawd statusLine -> cihaz koprusu (SIDE-EFFECT; statusLine ciktisi URETMEZ).
+# clawd statusLine -> device bridge (SIDE-EFFECT; produces NO statusLine output).
 #
-# Claude Code statusLine komutunun stdin'inde verilen zengin JSON'u alir
-# (.model.display_name, .context_window.used_percentage, .rate_limits.*), ozetler
-# ve DEGISTIYSE cihaza `POST /status` atar (fire-and-forget). Cihaz alt bandinda
-# `Model ctx:% 5h:% wk:%` (yuzdeler kullanima gore renkli) + reset geri sayimi
-# `5h: (2h32m) wk: (2d5h)` (gri) gosterir. Geri sayim burada, host'ta hesaplanir
-# (rate_limits.*.resets_at epoch) -> cihaz saat bilmez, sadece hazir string ciziyor.
+# Takes the rich JSON given on the stdin of the Claude Code statusLine command
+# (.model.display_name, .context_window.used_percentage, .rate_limits.*), summarizes it,
+# and IF IT CHANGED sends `POST /status` to the device (fire-and-forget). On the device's
+# bottom band it shows `Model ctx:% 5h:% wk:%` (percentages colored by usage) + reset
+# countdown `5h: (2h32m) wk: (2d5h)` (gray). The countdown is computed here, on the host
+# (rate_limits.*.resets_at epoch) -> the device has no clock, it just draws the ready string.
 #
-# NEDEN AYRI/THROTTLE: statusLine cok sik calisir; yalniz ozet DEGISINCE gonderilir
-# (son deger tmp dosyada) -> cihazi/agi bosuna mesgul etmez. Firmware /status'u GUC
-# yonetiminde AKTIVITE saymaz -> bu akis cihazi uyanik tutmaz / uyandirmaz.
+# WHY SEPARATE/THROTTLE: statusLine runs very often; it is sent only WHEN the summary
+# CHANGES (last value in a tmp file) -> it doesn't needlessly busy the device/network. The
+# firmware does NOT count /status as ACTIVITY in POWER management -> this flow does not keep
+# the device awake / wake it.
 #
-# RESET SELF-HEAL: cihaz reset olunca HUD "-" placeholder'a doner ama host'un dedup'i
-# son degeri tuttugu icin normalde yeniden gonderilmez. Bunun icin cihazi SU AN gosteren
-# (sahip) oturum, degeri en fazla ~HEAL_EVERY sn'de bir dedup'a bakmadan yeniden yollar
-# -> cihaz kendini onarir. Firmware'de setStatus ayni degeri dedup ettiginden EKRAN
-# TITREMEZ; sahip olmayan oturumlar susar -> oturumlar-arasi flip olmaz.
+# RESET SELF-HEAL: when the device resets, the HUD returns to the "-" placeholder, but since
+# the host's dedup holds the last value it normally won't resend. For this, the session that
+# CURRENTLY shows the device (the owner) resends the value at most ~every HEAL_EVERY sec,
+# ignoring dedup -> the device heals itself. Since setStatus in the firmware dedups the same
+# value, the SCREEN DOES NOT FLICKER; non-owner sessions stay quiet -> no cross-session flip.
 #
-# Cihaz adresi: CLAWD_HOST env (varsayilan clawd.local; clawd-hook.sh ile ayni mantik).
+# Device address: CLAWD_HOST env (default clawd.local; same logic as clawd-hook.sh).
 set -u
 
 HOST="${CLAWD_HOST:-clawd.local}"
@@ -30,27 +31,27 @@ command -v curl >/dev/null 2>&1 || exit 0
 INPUT="$(cat)"
 jqr() { printf '%s' "$INPUT" | jq -r "$1" 2>/dev/null; }
 
-# STATE: dedup dosyasi OTURUM BASINA (session_id ile). Es zamanli oturumlar boylece
-# birbirinin son-degerini EZMEZ -> her oturum yalniz KENDI degeri degisince gonderir,
-# cihaz "son aktif oturum"u stabil gosterir (bosta oturumlar bosuna repost yapmaz).
-# session_id yoksa tek paylasimli dosyaya duser (eski davranis; hicbir sey bozulmaz).
+# STATE: dedup file PER SESSION (with session_id). This way concurrent sessions DON'T
+# OVERWRITE each other's last-value -> each session sends only when ITS OWN value changes,
+# the device stably shows the "last active session" (idle sessions don't needlessly repost).
+# If there is no session_id it falls back to a single shared file (old behavior; nothing breaks).
 sid="$(jqr '.session_id // empty')"; sid="${sid//[^A-Za-z0-9_-]/}"
 STATE="${TMPDIR:-/tmp}/clawd-statusline-${sid:-shared}.last"
 
 model="$(jqr '.model.display_name // ""')"
-model="${model%% (*}"      # "Opus 4.8 (1M context)" -> "Opus 4.8" (parantezli eki at, cihazda sigsin)
+model="${model%% (*}"      # "Opus 4.8 (1M context)" -> "Opus 4.8" (drop the parenthesized suffix so it fits on the device)
 ctx="$(jqr '.context_window.used_percentage // empty')"
 h5="$(jqr '.rate_limits.five_hour.used_percentage // empty')"
 wk="$(jqr '.rate_limits.seven_day.used_percentage // empty')"
 five_reset="$(jqr '.rate_limits.five_hour.resets_at // empty')"
 week_reset="$(jqr '.rate_limits.seven_day.resets_at // empty')"
 
-# yuzde -> tam sayi; veri yoksa -1 (cihaz o segmenti gizler)
+# percentage -> integer; if no data -1 (the device hides that segment)
 rnd() { if [ -n "$1" ]; then printf '%.0f' "$1"; else printf '%s' '-1'; fi; }
 ctx="$(rnd "$ctx")"; h5="$(rnd "$h5")"; wk="$(rnd "$wk")"
 
-# epoch -> "2h32m" / "2d5h" / "45m" (statusline-command.sh time_until ile AYNI bicim).
-# resets_at yoksa bos -> cihaz "-" placeholder gosterir.
+# epoch -> "2h32m" / "2d5h" / "45m" (SAME format as time_until in statusline-command.sh).
+# if no resets_at then empty -> the device shows the "-" placeholder.
 time_until() {
   [ -z "$1" ] && return
   local secs=$(( $1 - $(date +%s) ))
@@ -67,16 +68,16 @@ body="$(jq -nc --arg m "$model" --argjson ctx "$ctx" --argjson h5 "$h5" --argjso
         --arg h5r "$h5r" --arg wkr "$wkr" \
         '{m:$m, ctx:$ctx, h5:$h5, wk:$wk, h5r:$h5r, wkr:$wkr}' 2>/dev/null)" || exit 0
 
-# fire-and-forget: arka planda, cikti /dev/null -> Claude Code beklemez
+# fire-and-forget: in the background, output to /dev/null -> Claude Code does not wait
 post() { ( curl -s -m "$TIMEOUT" -o /dev/null -X POST "http://${HOST}/status" \
              -H 'Content-Type: application/json' -d "$body" >/dev/null 2>&1 & ) ; }
 
 now="$(date +%s 2>/dev/null || echo 0)"
-OWNER="${TMPDIR:-/tmp}/clawd-statusline-owner"   # cihazi SU AN gosteren oturum (+zaman): paylasimli
-HEAL_EVERY="${CLAWD_HEAL_SECS:-15}"              # sahip oturum en fazla bu periyotla yeniden yollar
+OWNER="${TMPDIR:-/tmp}/clawd-statusline-owner"   # session that CURRENTLY shows the device (+time): shared
+HEAL_EVERY="${CLAWD_HEAL_SECS:-15}"              # the owner session resends at most this often
 
-# GERCEK degisiklik -> yolla + STATE guncelle + cihazin "sahipligini" bu oturuma al
-# (cihaz artik BU oturumun degerini gosteriyor). Boylece yalniz bu oturum tazeleyecek.
+# REAL change -> send + update STATE + take "ownership" of the device for this session
+# (the device now shows THIS session's value). This way only this session will refresh.
 if [ ! -f "$STATE" ] || [ "$(cat "$STATE" 2>/dev/null)" != "$body" ]; then
   printf '%s' "$body" > "$STATE" 2>/dev/null || true
   post
@@ -84,11 +85,11 @@ if [ ! -f "$STATE" ] || [ "$(cat "$STATE" 2>/dev/null)" != "$body" ]; then
   exit 0
 fi
 
-# DEGISMEDI. Cihaz reset olduysa placeholder ("-") gosteriyor olabilir; host bunu bilemez.
-# COZUM: cihazi su an gosteren (SAHIP) oturum, en fazla HEAL_EVERY sn'de bir son degeri
-# YENIDEN yollar -> reset'ten ~HEAL_EVERY sn sonra deger geri gelir. Firmware ayni degeri
-# dedup ettiginden bu tekrar EKRANDA TITREME YAPMAZ (yalniz gercekten farkli/reset sonrasi cizer).
-# Sahip OLMAYAN (bosta/arka) oturumlar susar -> oturumlar-arasi flip YOK.
+# UNCHANGED. If the device reset it may be showing the placeholder ("-"); the host can't know.
+# SOLUTION: the session that currently shows the device (the OWNER) RESENDS the last value at
+# most every HEAL_EVERY sec -> ~HEAL_EVERY sec after a reset the value comes back. Since the
+# firmware dedups the same value, this repeat DOES NOT FLICKER THE SCREEN (it only draws when
+# truly different / after a reset). NON-owner (idle/background) sessions stay quiet -> NO cross-session flip.
 owner_line="$(cat "$OWNER" 2>/dev/null)"
 owner_sid="${owner_line%% *}"; owner_ts="${owner_line##* }"
 case "$owner_ts" in ''|*[!0-9]*) owner_ts=0 ;; esac
