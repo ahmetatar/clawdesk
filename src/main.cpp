@@ -28,6 +28,7 @@
 #include "power.h"
 #include "hud.h"
 #include "mini.h"
+#include "usage.h"
 #include "spinner_words.h"
 
 TFT_eSPI tft = TFT_eSPI();
@@ -37,6 +38,13 @@ AsyncWebServer server(80);
 PowerManager power;
 Hud hud;
 MiniFleet minis;   // alt-agent (Task) gorsellestirme: yan sutunlarda gezinen kucuk clawd'lar
+UsageScreen usage; // kota gorunumu (sag-ust kose butonuyla degistirilir)
+
+// ---- gorunum modu ----
+// false = normal (maskot + HUD), true = usage (kota kartlari). Sag-ust kosede
+// BASLAYAN kisa dokunus degistirir. Usage modunda maskot/HUD/mini cizilmez;
+// olay isleme ve guc yonetimi AYNEN calisir (donuste kaldigi yerden devam).
+static bool uiUsage = false;
 
 // ---- olay kuyrugu (07'den) ----
 struct Ev { char k[24]; char g[10]; char s[48]; char tool[16]; bool ok; bool on; int ctx; };
@@ -65,6 +73,11 @@ int xoff, yoff;
 AnimId  curAnim  = ANIM_IDLE;
 int     frame    = 0;
 uint32_t lastFrame = 0;
+// setup() tam bitmeden loop() cizim yapmasin. WiFi baglanamayip setup erken return
+// ederse (fume zemin + HUD + minis KURULMAZ) loop yine de calisir; bu bayrak olmadan
+// drawFrame maskotu SIYAH hata ekraninin ustune fume-kare olarak basardi (uyku/uyanma
+// fillScreen'i gelene kadar cirkin dururdu). false iken loop yalniz hata ekranini korur.
+static bool g_ready = false;
 uint32_t revertAt  = 0;                            // gecici ifade -> donus zamani (0 = yok)
 AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bitince DONULECEK poz
                                                    // (dokunus oncesi durum: think/hacking/idle...)
@@ -159,16 +172,20 @@ static const char *pickSpin() {
 }
 
 // Kategoriyi HUD'a yansit. Kategori degismediyse dokunma (kelime sabit kalir).
+// Usage ekraninin alt spinner satiri da AYNI kelimeyi gosterir (tek kaynak).
 static void setHudCat(HudCat cat) {
   if ((int)cat == g_hudCat) return;
   g_hudCat = cat;
+  const char *txt = "";
   switch (cat) {
-    case HC_WORK:  hud.setAction(pickSpin()); break;
-    case HC_THINK: hud.setAction(pickSpin()); break;
-    case HC_HAPPY: hud.setAction(pick(HAPPY,  6)); break;
-    case HC_OOPS:  hud.setAction(pick(OOPS,   6)); break;
-    case HC_IDLE:  hud.setAction(""); break;
+    case HC_WORK:  txt = pickSpin(); break;
+    case HC_THINK: txt = pickSpin(); break;
+    case HC_HAPPY: txt = pick(HAPPY, 6); break;
+    case HC_OOPS:  txt = pick(OOPS,  6); break;
+    case HC_IDLE:  txt = ""; break;
   }
+  hud.setAction(txt);
+  usage.setAction(txt);
 }
 
 // Olayi HUD ust satirina (spinner/flavor) yansit. (Tool adi satiri KALDIRILDI.)
@@ -203,7 +220,7 @@ static bool connectWiFi() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(TC_DATUM);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString("WiFi baglaniyor...", tft.width() / 2, tft.height() / 2, 2);
+  tft.drawString("Connecting to WiFi...", tft.width() / 2, tft.height() / 2, 2);
   WiFi.mode(WIFI_STA);
 #if CLAWD_STATIC_IP
   // Cihaz IP'yi kendisi sabitler (extender arkasinda DHCP reservation calismaz).
@@ -246,15 +263,34 @@ void setup() {
   wordsq  = xQueueCreate(1, sizeof(SpinPool*));
 
   if (!connectWiFi()) {
-    tft.fillScreen(TFT_BLACK);
+    // Router henuz acilmamis / gecici parazit olabilir -> geri sayarak otomatik yeniden
+    // dene (ESP.restart cihazi bastan baslatir, setup tekrar connectWiFi cagirir).
+    // Kalici sorunsa (yanlis sifre) her turda geri sayip yeniden dener; kullanici
+    // install.sh ile duzeltip flaslayana kadar dongude kalir. g_ready hala false
+    // oldugundan loop() bu ekrana dokunmaz.
+    Serial.println("[clawd] WiFi connect failed");   // install.sh greps this exact marker
     tft.setTextColor(TFT_RED, TFT_BLACK);
-    tft.drawString("WiFi BAGLANAMADI", tft.width() / 2, tft.height() / 2, 2);
-    Serial.println("[clawd] WiFi BAGLANAMADI");
-    return;
+    tft.setTextDatum(MC_DATUM);
+    const int cx = tft.width() / 2, cy = tft.height() / 2;
+    for (int s = WIFI_RETRY_SECS; s > 0; s--) {
+      tft.fillScreen(TFT_BLACK);
+      tft.drawString("WiFi connection failed", cx, cy - 12, 2);
+      char msg[40];
+      snprintf(msg, sizeof(msg), "Retrying in %d s...", s);
+      tft.setTextColor(tft.color565(150, 150, 162), TFT_BLACK);
+      tft.drawString(msg, cx, cy + 12, 2);
+      tft.setTextColor(TFT_RED, TFT_BLACK);
+      delay(1000);
+    }
+    Serial.println("[clawd] yeniden baslatiliyor (WiFi retry)...");
+    ESP.restart();
   }
   WiFi.setSleep(true);                             // modem-sleep: association korunur, gelen paket uyandirir
   Serial.printf("[clawd] WiFi OK. IP: %s\n", WiFi.localIP().toString().c_str());
   if (MDNS.begin("clawd")) MDNS.addService("http", "tcp", 80);
+  // NTP saat (usage ekranindaki buyuk saat icin). SNTP arka planda senkronlar ve
+  // periyodik tazeler; senkron gelene kadar usage ekrani "--:--" gosterir.
+  configTime(CLOCK_TZ_OFFSET_S, 0, "pool.ntp.org", "time.google.com");
 
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *req) {
     req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\",\"hud\",\"status\"]}");
@@ -364,6 +400,8 @@ void setup() {
   hud.render();
 
   minis.begin(&tft);                               // yan sutun mini-clawd filosu (bos baslar)
+  usage.begin(&tft);                               // kota gorunumu (kose butonuyla acilir)
+  g_ready = true;                                  // zemin+HUD+minis hazir -> loop artik cizebilir
 }
 
 // Uyku durumu kenarlarinda CPU/uyandirma yan etkileri.
@@ -376,14 +414,41 @@ static void applyPowerEdge(PowerManager::State st) {
   }
 }
 
-// Dokunma var mi? Basinc yeterli (uyandirma) + ham x doldur (jest algilama).
-// rawx = XPT2046 ham ADC x (kalibrasyon gerekmez; jestte sadece GORELI hareket lazim).
-static bool readTouch(int &rawx) {
+// Dokunma var mi? Basinc yeterli (uyandirma) + ham x/y doldur.
+// rawx: jest algilama (GORELI hareket, kalibrasyon gerekmez).
+// rawy: rawx ile birlikte kose-buton tespiti (kaba kalibrasyonla ekran px'e cevrilir).
+static bool readTouch(int &rawx, int &rawy) {
   if (!ts.tirqTouched() && !ts.touched()) return false;
   TS_Point p = ts.getPoint();
   if (p.z < 200) return false;
   rawx = p.x;
+  rawy = p.y;
   return true;
+}
+
+// Ham dokunus sag-ust kose (gorunum degistirici buton) bolgesinde mi?
+// Kaba kalibrasyon yeter: bolge genis (UI_BTN_W x UI_BTN_H).
+static bool inCorner(int rawx, int rawy) {
+  int sx = map(rawx, RAW_X_MIN, RAW_X_MAX, 0, 319);
+  int sy = map(rawy, RAW_Y_MIN, RAW_Y_MAX, 0, 239);
+  sx = constrain(sx, 0, 319);
+  sy = constrain(sy, 0, 239);
+  return sx >= 320 - UI_BTN_W && sy <= UI_BTN_H;
+}
+
+// Gorunum degistir: normal <-> usage. Donuste zemin tazelenir, tum katmanlar
+// kirlenir (temiz cizim); girase usage tam cizim ister. Anim/olay durumu KORUNUR.
+static void toggleUsage() {
+  uiUsage = !uiUsage;
+  Serial.printf("[clawd] gorunum -> %s\n", uiUsage ? "usage" : "normal");
+  if (uiUsage) {
+    usage.markAllDirty();                            // render() zemin dahil her seyi cizer
+  } else {
+    tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
+    hud.markAllDirty();
+    minis.markAllDirty();
+    lastFrame = 0;                                   // maskot bir sonraki tick'te hemen cizilsin
+  }
 }
 
 // Dokunmatik jest durum makinesi — her loop cagirilir. DOWN/UP kenarlari + dokunma
@@ -427,10 +492,33 @@ static TouchGesture touchGesture(bool isTouched, int rawx) {
 }
 
 void loop() {
+  // setup() basarisiz/erken bitmisse ( or. WiFi yok): fume zemin ve HUD hic kurulmadi.
+  // Cizim yapma -> "WiFi BAGLANAMADI" hata ekrani bozulmadan kalsin (maskot fume-karesi
+  // siyah zemine basilmasin). Kullanici WiFi'yi duzeltip (install.sh) cihazi resetler.
+  if (!g_ready) { delay(200); return; }
+
   bool wasAsleep = power.asleep();
-  int  rawx = 0;
-  bool isTouched = readTouch(rawx);
-  TouchGesture tg = touchGesture(isTouched, rawx);
+  int  rawx = 0, rawy = 0;
+  bool isTouched = readTouch(rawx, rawy);
+
+  // Sag-ust kose butonu: kosede BASLAYAN temas gorunumu degistirir ve jest
+  // makinesine GIRMEZ (cift-tap toggle'i tickle olarak da sayilmasin). Uykudayken
+  // dokunus once uyandirir (asagida notifyActivity), gorunum degismez.
+  static bool     prevTouched  = false;
+  static bool     cornerPress  = false;              // aktif temas kosede mi basladi
+  static uint32_t lastToggleMs = 0;
+  if (isTouched && !prevTouched) {                   // DOWN kenari
+    cornerPress = inCorner(rawx, rawy);
+    if (cornerPress && !wasAsleep && millis() - lastToggleMs >= UI_TOGGLE_DEBOUNCE_MS) {
+      lastToggleMs = millis();
+      toggleUsage();
+    }
+  } else if (!isTouched) {
+    cornerPress = false;
+  }
+  prevTouched = isTouched;
+
+  TouchGesture tg = touchGesture(isTouched && !cornerPress, rawx);
 
   // Uyandirma kaynagi (event/dokunma) varsa ve uykudaysak CPU'yu HERSEYDEN ONCE
   // tam hiza al: uyku 80MHz iken UART/cizim bozulmasin, olay tam hizda islensin.
@@ -480,10 +568,10 @@ void loop() {
   if (isTouched) power.notifyActivity();
 
   // 2b) dokunmatik jestleri: cift-dokunus -> gidiklama, surtme -> oksama (kalpler).
-  // Yalniz UYANIK + agent modu DISINDA tetiklenir (agent modu buyuk pozu KILITLI
-  // tutar; transient tickle/love idle'a donerek o kilidi bozardi). Uykudayken ilk
+  // Yalniz UYANIK + agent modu DISINDA + NORMAL gorunumde tetiklenir (agent modu
+  // buyuk pozu KILITLI tutar; usage ekraninda maskot yok). Uykudayken ilk
   // dokunus cihazi uyandirir; clawd bir sonraki etkilesime tepki verir.
-  if (tg != TG_NONE && !power.asleep() && !agentMode) {
+  if (tg != TG_NONE && !power.asleep() && !agentMode && !uiUsage) {
     // Dokunus ONCESI pozu hatirla: tickle/love bitince idle'a DEGIL, o poza don
     // (orn. Claude dusunurken oksarsan -> love -> tekrar think). curAnim zaten
     // tickle/love ise (ust uste dokunus) uzerine yazma, gercek taban korunsun.
@@ -504,11 +592,15 @@ void loop() {
     // SLEEP: ekran kapali, cizim yok.
   }
 
-  // uykudan yeni ciktiysak: fume zemini tazele (son frame duruyordu) + HUD'u yeniden ciz
+  // uykudan yeni ciktiysak: zemini tazele + aktif gorunumu bastan ciz
   if (wasAsleep && !power.asleep()) {
-    tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
-    hud.markAllDirty();
-    minis.markAllDirty();                            // temiz zemine yeniden cizsinler
+    if (uiUsage) {
+      usage.markAllDirty();                          // render() zemin dahil tam cizer
+    } else {
+      tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
+      hud.markAllDirty();
+      minis.markAllDirty();                          // temiz zemine yeniden cizsinler
+    }
   }
 
   // 4) gecici ifade suresi doldu -> idle (flavor + tool adini da temizle)
@@ -528,6 +620,7 @@ void loop() {
   if (xQueueReceive(statusq, &sm, 0) == pdTRUE) {
     hud.setStatus(sm.m, sm.ctx, sm.h5, sm.wk);
     hud.setReset(sm.h5r, sm.wkr);
+    usage.setStatus(sm.h5, sm.wk, sm.h5r, sm.wkr);   // kota ekrani ayni veriyle beslenir
     // ctx% esigi gecince, cihaz O ANDA "dinlenme" pozundaysa (idle/brain_full) aninda
     // gecis yap (bir sonraki olayi beklemeden) — guc yonetimine dokunmaz (bkz. yorum yukarida).
     bool nowHigh = sm.ctx >= CTX_BRAIN_THRESH;
@@ -559,16 +652,22 @@ void loop() {
     hud.setWifi(c, c ? WiFi.RSSI() : -127);
   }
 
-  // 6) animasyon + HUD — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
+  // 6) cizim — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama).
+  // Usage modunda maskot/HUD/mini yerine kota ekrani cizilir; anim durumu
+  // arka planda ilerlemez ama korunur (donuste kaldigi pozdan surer).
   if (!power.asleep()) {
-    uint32_t now = millis();
-    if (now - lastFrame >= ANIMS[curAnim].interval) {
-      lastFrame = now;
-      drawFrame(curAnim, frame);
-      frame = (frame + 1) % ANIMS[curAnim].count;
+    if (uiUsage) {
+      usage.render();                                // yalniz kirli parcalar cizilir
+    } else {
+      uint32_t now = millis();
+      if (now - lastFrame >= ANIMS[curAnim].interval) {
+        lastFrame = now;
+        drawFrame(curAnim, frame);
+        frame = (frame + 1) % ANIMS[curAnim].count;
+      }
+      hud.render();                                  // yalniz kirli koseler cizilir
+      minis.tick();                                  // yan sutunlarda alt-agent mini'leri
     }
-    hud.render();                                    // yalniz kirli koseler cizilir
-    minis.tick();                                    // yan sutunlarda alt-agent mini'leri
   }
 
   delay(power.asleep() ? 40 : 5);                   // uykuda daha uzun bekle (guc)
