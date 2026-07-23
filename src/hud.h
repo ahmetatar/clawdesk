@@ -26,7 +26,7 @@ public:
   void begin(TFT_eSPI *tft) {
     _tft = tft;
     _bg  = tft->color565(BG_R, BG_G, BG_B);
-    _wifiDirty = _statusDirty = _actionDirty = _resetDirty = true;
+    _wifiDirty = _statusDirty = _actionDirty = _resetDirty = _btnDirty = true;
   }
 
   // rssi: WiFi.RSSI() (dBm, negatif). connected=false -> tek kirmizi cubuk.
@@ -75,11 +75,12 @@ public:
     _resetDirty = true;
   }
 
-  void markAllDirty() { _wifiDirty = _statusDirty = _actionDirty = _resetDirty = true; }
+  void markAllDirty() { _wifiDirty = _statusDirty = _actionDirty = _resetDirty = _btnDirty = true; }
 
   // Her loop cagrilir; yalniz kirli satirlari cizer. Uyku sirasinda main CAGIRMAZ.
   void render() {
     if (!_tft) return;
+    if (_btnDirty)    { drawBtn();    _btnDirty    = false; }
     if (_wifiDirty)   { drawWifi();   _wifiDirty   = false; }
     if (_actionDirty) { drawAction(); _actionDirty = false; }
     if (_resetDirty)  { drawReset();  _resetDirty  = false; }
@@ -105,6 +106,19 @@ private:
       int bx = x0 + i * (bw + gap);
       _tft->fillRect(bx, base - h[i], bw, h[i], (i < _bars) ? on : off);
     }
+  }
+
+  // Sag-ust: gorunum degistirici — cift yonlu takas oklari (ust sag, alt sol).
+  // Ac/kapat degil "iki gorunum arasinda gecis" anlami tasir; usage ekraninda da
+  // AYNI ikon ayni yerde durur (ayni buton hissi). Dokunma bolgesi (UI_BTN_W/H)
+  // bundan cok daha genis; ikon yalniz gorsel isaret. Statik — bir kez cizilir.
+  void drawBtn() {
+    const int x = 320 - 32;
+    clearRect(x - 4, 0, 36, 24);
+    _tft->fillRect(x, 6, 16, 3, CLAWD_ORANGE);                    // ust sap
+    _tft->fillTriangle(x + 16, 3, x + 16, 11, x + 23, 7, CLAWD_ORANGE);   // sag ok ucu
+    _tft->fillRect(x + 8, 14, 16, 3, CLAWD_ORANGE);               // alt sap
+    _tft->fillTriangle(x + 8, 11, x + 8, 19, x + 1, 15, CLAWD_ORANGE);    // sol ok ucu
   }
 
   // Kullanima gore renk: <%50 yesil, <%80 sari, >=%80 kirmizi (statusLine ile ayni).
@@ -181,5 +195,6 @@ private:
   char     _h5r[10] = {0}, _wkr[10] = {0};
   bool     _connected  = false;
   int      _bars       = 1;
-  bool     _wifiDirty = true, _statusDirty = true, _actionDirty = true, _resetDirty = true;
+  bool     _wifiDirty = true, _statusDirty = true, _actionDirty = true, _resetDirty = true,
+           _btnDirty = true;
 };
