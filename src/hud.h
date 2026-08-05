@@ -20,6 +20,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "config.h"
+#include "ui_toggle.h"   // sag-ust gorunum degistirici (pill toggle, kapali durum)
 
 class Hud {
 public:
@@ -108,18 +109,10 @@ private:
     }
   }
 
-  // Sag-ust: gorunum degistirici — cift yonlu takas oklari (ust sag, alt sol).
-  // Ac/kapat degil "iki gorunum arasinda gecis" anlami tasir; usage ekraninda da
-  // AYNI ikon ayni yerde durur (ayni buton hissi). Dokunma bolgesi (UI_BTN_W/H)
-  // bundan cok daha genis; ikon yalniz gorsel isaret. Statik — bir kez cizilir.
-  void drawBtn() {
-    const int x = 320 - 32;
-    clearRect(x - 4, 0, 36, 24);
-    _tft->fillRect(x, 6, 16, 3, CLAWD_ORANGE);                    // ust sap
-    _tft->fillTriangle(x + 16, 3, x + 16, 11, x + 23, 7, CLAWD_ORANGE);   // sag ok ucu
-    _tft->fillRect(x + 8, 14, 16, 3, CLAWD_ORANGE);               // alt sap
-    _tft->fillTriangle(x + 8, 11, x + 8, 19, x + 1, 15, CLAWD_ORANGE);    // sol ok ucu
-  }
+  // Sag-ust: gorunum degistirici toggle — burasi normal gorunum, yani KAPALI
+  // durum (topuz solda, yatak gri). Usage ekraninda ayni toggle acik cizilir.
+  // Dokunma bolgesi (UI_BTN_W/H) bundan cok daha genis; toggle yalniz gorsel.
+  void drawBtn() { drawUiToggle(_tft, _bg, false); }
 
   // Kullanima gore renk: <%50 yesil, <%80 sari, >=%80 kirmizi (statusLine ile ayni).
   uint16_t pctColor(int p) {

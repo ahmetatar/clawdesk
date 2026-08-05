@@ -21,6 +21,7 @@
 #include <TFT_eSPI.h>   // LOAD_GFXFF: FreeSansBold* fontlari TFT_eSPI.h icinden gelir
 #include <time.h>
 #include "config.h"
+#include "ui_toggle.h"          // sag-ust gorunum degistirici (pill toggle, acik durum)
 #include "anims/clawd_mini.h"
 #include "fonts/clock_font.h"   // saat: FSB24'ten cok az kucuk ozel font (make_clock_font.py)
 
@@ -124,16 +125,10 @@ private:
     _tft->setTextFont(2);                                   // yerlesik fonta don
   }
 
-  // Sag-ust: gorunum-degistirici — HUD'daki cift yonlu takas oklarinin AYNISI,
-  // ayni konumda (ayni buton hissi). Hangi modda oldugumuzu ekranin kendisi
-  // gosterir; ikon yalniz "gecis yapilir" isaretidir. Dokunma bolgesi genis.
-  void drawSwapIcon() {
-    const int x = 320 - 32;
-    _tft->fillRect(x, 6, 16, 3, CLAWD_ORANGE);                    // ust sap
-    _tft->fillTriangle(x + 16, 3, x + 16, 11, x + 23, 7, CLAWD_ORANGE);   // sag ok ucu
-    _tft->fillRect(x + 8, 14, 16, 3, CLAWD_ORANGE);               // alt sap
-    _tft->fillTriangle(x + 8, 11, x + 8, 19, x + 1, 15, CLAWD_ORANGE);    // sol ok ucu
-  }
+  // Sag-ust: gorunum-degistirici toggle — HUD'dakiyle AYNI toggle, ayni konumda;
+  // burada ACIK durum (topuz sagda, yatak turuncu) cunku kota ekranindayiz.
+  // Dokunma bolgesi (UI_BTN_W/H) cizimden cok daha genis.
+  void drawSwapIcon() { drawUiToggle(_tft, _bg, true); }
 
   // -- kart: buyuk % + rozet + bar + "Resets in ..." --
   void drawCard(int y, const char *label, int pct, const char *rst) {
