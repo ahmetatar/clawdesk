@@ -96,14 +96,24 @@ bool ctxHigh = false;
 // STICKY: zaten bir idle pozundaysak yeniden ZAR ATMAYIZ -> ust uste gelen
 // "dinlenmeye don" olaylari maskotu ekranda takas edip titretmez; poz ancak
 // gercek bir reaksiyon pozundan (hacking/happy/think...) donunce degisir.
-static inline AnimId pickIdle() {
-  uint16_t r = (uint16_t)(esp_random() % idlePoolTotal());
-  for (uint8_t i = 0; i < IDLE_POOL_N - 1; i++) {
-    if (r < IDLE_POOL[i].weight) return IDLE_POOL[i].id;
-    r -= IDLE_POOL[i].weight;
+static inline AnimId pickPose(const PosePick *pool, uint8_t n, uint16_t total) {
+  uint16_t r = (uint16_t)(esp_random() % total);
+  for (uint8_t i = 0; i < n - 1; i++) {
+    if (r < pool[i].weight) return pool[i].id;
+    r -= pool[i].weight;
   }
-  return IDLE_POOL[IDLE_POOL_N - 1].id;                // son uye: kalan tum agirlik
+  return pool[n - 1].id;                               // son uye: kalan tum agirlik
 }
+static inline AnimId pickIdle() { return pickPose(IDLE_POOL, IDLE_POOL_N, idlePoolTotal()); }
+
+// ---- uzayan is: klavye -> tava ----
+// workSince = calisma pozuna (klavye) KESINTISIZ girildigi an; idle'a/baska bir poza
+// her donuste sifirlanir (setAnim). Sayac WORK_LONG_MS'i asinca loop() maskotu tavaya
+// alir ve is bitene kadar orada birakir -> "bu is uzadi" tek bakista okunur. Sayac
+// pes pese gelen tool.pre'lerde TAZELENMEZ (tool basina degil, is basina olculur).
+static const uint32_t WORK_LONG_MS = 25000;
+static uint32_t workSince = 0;                         // 0 = calisma pozunda degiliz
+
 static inline AnimId restAnim() {
   if (ctxHigh) return ANIM_BRAIN_FULL;                // context kritik: beyin uyarisi
   return isIdlePose(curAnim) ? curAnim : pickIdle();
@@ -122,6 +132,10 @@ static void led(bool g, bool b) {                 // active-low
 }
 
 static void setAnim(AnimId id) {
+  // Uzayan-is sayaci: calisma pozuna DISARIDAN girisde baslat, calisma disina her
+  // cikista sifirla. Klavye -> tava gecisi sayaci SURDURUR (ayni isin devami).
+  if (!isWorkPose(id))            workSince = 0;
+  else if (!isWorkPose(curAnim))  workSince = millis();
   curAnim = id;
   frame = 0;
   lastFrame = 0;                                   // bir sonraki tick'te hemen ciz
@@ -145,7 +159,10 @@ static bool isWaitingTool(const char *t) {
 static int mapEvent(const Ev &e) {
   const char *k = e.k;
   if (!strcmp(k, "think"))          return e.on ? ANIM_THINK : ANIM_IDLE;
-  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : ANIM_HACKING;
+  // tool.pre HEP klavyeyle baslar; is uzayip tavaya gectiysek (loop) pes pese gelen
+  // tool.pre'ler maskotu klavyeye GERI CEKMEZ -> tava is bitene kadar kalir.
+  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK
+                                         : (curAnim == ANIM_COOKING ? -1 : ANIM_HACKING);
   if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
   if (!strcmp(k, "git"))            return ANIM_HAPPY;
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
@@ -631,6 +648,14 @@ void loop() {
     AnimId back = touchAnim ? returnAnim : restAnim();
     setAnim(back);
     if (isIdlePose(back) || back == ANIM_BRAIN_FULL) setHudCat(HC_IDLE);
+  }
+
+  // 4b) UZAYAN IS: klavye pozu WORK_LONG_MS'i astiysa tavaya gec (tek yonlu; tava
+  // is bitene kadar kalir, tool.pre onu klavyeye geri cekmez -> takas/titreme yok).
+  // Agent modunda buyuk poz ANIM_AGENTS'te kilitli oldugu icin devre disi.
+  if (!agentMode && curAnim == ANIM_HACKING && workSince &&
+      millis() - workSince >= WORK_LONG_MS) {
+    setAnim(ANIM_COOKING);
   }
 
   // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ

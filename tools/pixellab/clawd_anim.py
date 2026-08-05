@@ -249,6 +249,121 @@ def anim_hacking(n=8):
         out.append(c)
     return out
 
+# --- "calisiyor" pozu DENEMESI: klavye yerine TAVADA yemek pisiren clawd ---
+# Klavye ile ayni recete: clawd'in KENDI pikselleri degismez, tava tamamen
+# deterministik ustluk katman ve ayni HACK_UP bandinda durur (alt HUD yazilarinin
+# ustunde). Okunabilirligin sarti: (1) tava agzi ELIPS (ustten bakis) olsun, duz
+# dikdortgen "tencere" gibi okunuyor; (2) sap SAGA dogru ve tavadan ACIK tonda
+# cikssin (siluetin "tava" olarak taninmasini saglayan sey); (3) yumurta sari
+# NOKTASI tavanin koyu icine karsi en parlak oge olsun.
+PAN_RIM   = (152, 156, 170, 255)   # agiz kenari (parlak celik) — fume zemine karsi
+PAN_BODY  = (98, 102, 116, 255)    # dis govde (kenarin altindaki kalinlik)
+PAN_IN    = (48, 50, 60, 255)      # ic yuzey (koyu dokum)
+PAN_IN_HI = (72, 76, 90, 255)      # ic yuzeyde alt kavis parlamasi (derinlik)
+HANDLE    = (128, 86, 54, 255)     # ahsap sap
+HANDLE_D  = (84, 54, 34, 255)
+HANDLE_HI = (168, 118, 78, 255)
+EGG_W     = (247, 243, 228, 255)   # yumurta akı
+EGG_SH    = (204, 198, 178, 255)
+YOLK      = (250, 186, 52, 255)
+YOLK_HI   = (255, 226, 130, 255)
+STEAM     = (228, 234, 244, 255)   # sicak turuncu govde uzerinde de beyaz kalmali
+SIZZLE    = (255, 214, 140, 255)   # cizirti kivilcimi
+
+PAN_W, PAN_H = 38, 13              # agiz elipsi
+PAN_X = 6                          # tava sol kenari (sap saga 12px tasar -> 56 < 64)
+
+HANDLE_X0 = PAN_X + PAN_W - 5     # sapin basladigi x (tava agzinin sag kenari)
+HANDLE_L  = 16                    # sap uzunlugu -> uc 55'te biter (< 64)
+
+def draw_pan(c, x, y):
+    """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + saga ahsap sap.
+    Sap DUMDUZ yataydir: 16px'de birkac piksel yukselen egim bu olcekte duzgun bir
+    cizgi degil BASAMAK uretiyor ve sap yamuk/kirik gorunuyor. Duz sapin tavaya
+    karismasini onleyen sey egim degil, ahsap rengi + ust parlama/alt golge cifti."""
+    d = ImageDraw.Draw(c)
+    d.ellipse([x, y + 3, x + PAN_W - 1, y + PAN_H - 1 + 3], fill=PAN_BODY)   # kalinlik
+    d.ellipse([x, y, x + PAN_W - 1, y + PAN_H - 1], fill=PAN_RIM)            # agiz kenari
+    d.ellipse([x + 2, y + 2, x + PAN_W - 3, y + PAN_H - 3], fill=PAN_IN)     # ic yuzey
+    d.arc([x + 3, y + 3, x + PAN_W - 4, y + PAN_H - 3], 25, 155, fill=PAN_IN_HI)
+    ym = y + PAN_H // 2 - 1
+    hx0, hx1 = x + PAN_W - 5, x + PAN_W - 5 + HANDLE_L - 1
+    d.rectangle([hx0, ym, hx1, ym + 2], fill=HANDLE)
+    d.line([(hx0, ym), (hx1, ym)], fill=HANDLE_HI)          # ust kenar parlamasi
+    d.line([(hx0, ym + 3), (hx1, ym + 3)], fill=HANDLE_D)   # alt golge (kalinlik)
+    # tavaya baglanan bilezik METAL (koyu ahsapla yapilirsa sapin dibinde kirli bir
+    # blok olarak okunuyor); sap ucunda acik tonlu topuz.
+    d.rectangle([hx0, ym - 1, hx0 + 1, ym + 3], fill=PAN_BODY)
+    d.line([(hx0, ym - 1), (hx0 + 1, ym - 1)], fill=PAN_RIM)
+    d.rectangle([hx1 - 1, ym, hx1, ym + 2], fill=HANDLE_HI)      # sap ucu (topuz)
+
+def draw_egg(c, cx, cy, flat=False):
+    """Sahanda yumurta: ak (alt golgeli) + parlak sari. flat=True -> havada hafif ezik."""
+    d = ImageDraw.Draw(c)
+    h = 7 if not flat else 6
+    d.ellipse([cx - 8, cy - h // 2 + 1, cx + 7, cy + h // 2 + 1], fill=EGG_SH)  # alt golge
+    d.ellipse([cx - 8, cy - h // 2, cx + 7, cy + h // 2], fill=EGG_W)
+    d.ellipse([cx - 10, cy - 2, cx - 5, cy + 2], fill=EGG_W)                   # akin sol lobu
+    d.ellipse([cx - 2, cy - 3, cx + 3, cy + 1], fill=YOLK)
+    d.point((cx - 1, cy - 2), fill=YOLK_HI)
+
+def draw_steam(c, x, y, alpha, wob=0.0):
+    """Yukari suzulen buhar SERIDI: 2px genis, sinuslu kivrilan, tepeye dogru sonen.
+    Tek tek pikselden olusan kucuk glifler bu boyutta "s harfi" gibi okunuyordu —
+    surekli serit + dikey alpha rampasi buhar okumasini veren sey."""
+    p = c.load()
+    r, g, b, _ = STEAM
+    H = 8
+    for k in range(H):
+        dx = int(round(1.4 * math.sin(k * 0.85 + wob)))
+        a = alpha * (H - k) // H                      # tepeye dogru erir
+        if a <= 12: continue
+        for sx in (x + dx, x + dx + 1):
+            if 0 <= sx < CANVAS and 0 <= y - k < CANVAS:
+                p[sx, y - k] = (r, g, b, a)
+
+def anim_cooking(n=8):
+    """clawd tavada yemek ceviriyor: sag kol sapi tutar, tava dip-yap ve yumurta
+    havaya sicrar (2. -4. frame), gozler yukari yumurtayi takip eder; tavadan
+    buhar suzulur, yumurta tavadayken cizirti kivilcimlari. HACK_UP bandinda."""
+    out = []
+    # Tava agzi clawd'in AYAKLARINI yarilar (klavyedeki gibi "arkasinda duruyor"
+    # okumasi): daha asagida birakilirsa bacaklar tavayla govde arasinda bosta asili
+    # kaliyor ve sahne "tava yere dusmus" gibi gorunuyor.
+    pan_y0 = CY + CH - 3 - HACK_UP - 2
+    pan_dy = (0, 1, -2, -1, 0, 1, 0, 0)          # savurma: dip -> yukari itis -> yakalama
+    egg_dy = (0, 1, -3, -9, -6, 1, 0, 0)
+    # buhar: (x, faz, kivrim) — tava agzi boyunca dagitilmis uc serit
+    steam = ((13, 0, 0.0), (30, 3, 1.7), (48, 5, 3.2))
+    life = 5
+    for i in range(n):
+        pdy = pan_dy[i % 8]
+        air = i % 8 in (2, 3, 4)                 # yumurta havada
+        cl = clawd_variant(eye_dy=-1 if air else 0,
+                           larm_dy=(0, 0, -1, -1, 0, 0, 0, 0)[i % 8],
+                           rarm_dy=max(-1, min(1, pdy)))    # sag kol sapla birlikte
+        c = base_canvas()
+        place(c, cl, dy=-HACK_UP)
+        py = pan_y0 + pdy
+        draw_pan(c, PAN_X, py)
+        # on kol: sag kolun ALT kenarindan (sprite y14 -> canvas) sapa iner. Kol ve
+        # tava ayni yonde hareket ettigi icin (rarm_dy = pdy) kavrama hic kopmaz.
+        # buhar YUMURTADAN ONCE: havadaki yumurtanin ustune denk gelen serit onde
+        # kalirsa yumurtaya bulasmis bir leke gibi okunuyor.
+        for (sx, ph, wob) in steam:
+            age = (i - ph) % n
+            if age >= life: continue
+            draw_steam(c, sx, py - 1 - age * 2, 230 - int(170 * age / life), wob + age * 0.5)
+        ecx = PAN_X + PAN_W // 2 + 1                 # akin sol lobu tasiyor -> hafif saga
+        draw_egg(c, ecx, py + PAN_H // 2 + egg_dy[i % 8], flat=air)
+        if not air:                              # tavadayken cizirdar
+            p = c.load()
+            for (sx, sy) in ((ecx - 10, py + 3), (ecx + 9, py + 7)) if i % 2 == 0 else \
+                            ((ecx + 10, py + 3), (ecx - 9, py + 8)):
+                if 0 <= sx < CANVAS and 0 <= sy < CANVAS: p[sx, sy] = SIZZLE
+        out.append(c)
+    return out
+
 # --- dusunce balonu (3B, golgeli puffy bulut) ---
 CLOUD_W = (247, 248, 246, 255)   # ust beyaz
 CLOUD_SH = (196, 199, 212, 255)  # alt golge (hacim)
@@ -763,7 +878,7 @@ def anim_idle_music(n=8):
     return out
 
 ANIMS = {"idle": anim_idle, "idle_music": anim_idle_music,
-         "hacking": anim_hacking, "happy": anim_happy,
+         "hacking": anim_hacking, "cooking": anim_cooking, "happy": anim_happy,
          "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
          "agents": anim_agents, "love": anim_love, "tickle": anim_tickle,
          "brain_full": anim_brain_full, "compact": anim_compact}
