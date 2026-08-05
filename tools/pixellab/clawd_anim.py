@@ -269,17 +269,12 @@ YOLK      = (250, 186, 52, 255)
 YOLK_HI   = (255, 226, 130, 255)
 STEAM     = (228, 234, 244, 255)   # sicak turuncu govde uzerinde de beyaz kalmali
 SIZZLE    = (255, 214, 140, 255)   # cizirti kivilcimi
-ARM_SH    = (170, 60, 40, 255)     # on kolun sag kenari (govde renginin golgesi)
-HAND      = (196, 72, 48, 255)     # kavrayan el — clawd'in KENDI renk ailesi
-HAND_LN   = (116, 38, 26, 255)     # elin dis hatti (ahsap saptan ayiran sey)
-HAND_HI   = (232, 104, 74, 255)
 
 PAN_W, PAN_H = 38, 13              # agiz elipsi
 PAN_X = 6                          # tava sol kenari (sap saga 12px tasar -> 56 < 64)
 
 HANDLE_X0 = PAN_X + PAN_W - 5     # sapin basladigi x (tava agzinin sag kenari)
 HANDLE_L  = 16                    # sap uzunlugu -> uc 55'te biter (< 64)
-GRIP_X    = HANDLE_X0 + 8         # clawd'in kavradigi nokta
 
 def draw_pan(c, x, y):
     """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + saga ahsap sap.
@@ -301,20 +296,6 @@ def draw_pan(c, x, y):
     d.rectangle([hx0, ym - 1, hx0 + 1, ym + 3], fill=PAN_BODY)
     d.line([(hx0, ym - 1), (hx0 + 1, ym - 1)], fill=PAN_RIM)
     d.rectangle([hx1 - 1, ym, hx1, ym + 2], fill=HANDLE_HI)      # sap ucu (topuz)
-
-def draw_grip(c, arm_bottom_y, handle_y):
-    """clawd'in sag kolunu sapa BAGLAYAN on kol + eldiven. clawd'in kendi sprite'i
-    44x30'da bitiyor, sap ~17px asagida -> arada bosluk kaliyor ve tava havada
-    duruyormus gibi okunuyordu. On kol govde renginde (FACE) cizilir, kavrama
-    noktasinda KOYU eldiven sapin USTUNE gelir (elin sapi sardigi okumasi bundan)."""
-    d = ImageDraw.Draw(c)
-    d.rectangle([GRIP_X - 1, arm_bottom_y, GRIP_X + 1, handle_y], fill=FACE)
-    d.line([(GRIP_X + 1, arm_bottom_y), (GRIP_X + 1, handle_y)], fill=ARM_SH)  # sag kenar hacim
-    # el: govde renginde, KOYU dis hatli (koyu-gri bir "eldiven" tavanin bir parcasi
-    # gibi okunuyordu; el clawd'in kendi renginde olunca tutus okumasi netlesiyor).
-    d.rectangle([GRIP_X - 2, handle_y - 2, GRIP_X + 2, handle_y + 2], fill=HAND_LN)
-    d.rectangle([GRIP_X - 1, handle_y - 1, GRIP_X + 1, handle_y + 2], fill=HAND)
-    d.point((GRIP_X - 1, handle_y - 1), fill=HAND_HI)
 
 def draw_egg(c, cx, cy, flat=False):
     """Sahanda yumurta: ak (alt golgeli) + parlak sari. flat=True -> havada hafif ezik."""
@@ -352,8 +333,8 @@ def anim_cooking(n=8):
     pan_y0 = CY + CH - 3 - HACK_UP - 2
     pan_dy = (0, 1, -2, -1, 0, 1, 0, 0)          # savurma: dip -> yukari itis -> yakalama
     egg_dy = (0, 1, -3, -9, -6, 1, 0, 0)
-    # buhar: (x, faz, kivrim) — sagdaki serit KAVRAYAN KOL bandini (GRIP_X±2) kesmemeli
-    steam = ((13, 0, 0.0), (30, 3, 1.7), (21, 5, 3.2))
+    # buhar: (x, faz, kivrim) — tava agzi boyunca dagitilmis uc serit
+    steam = ((13, 0, 0.0), (30, 3, 1.7), (48, 5, 3.2))
     life = 5
     for i in range(n):
         pdy = pan_dy[i % 8]
@@ -367,7 +348,6 @@ def anim_cooking(n=8):
         draw_pan(c, PAN_X, py)
         # on kol: sag kolun ALT kenarindan (sprite y14 -> canvas) sapa iner. Kol ve
         # tava ayni yonde hareket ettigi icin (rarm_dy = pdy) kavrama hic kopmaz.
-        draw_grip(c, CY + 14 - HACK_UP + max(-1, min(1, pdy)), py + PAN_H // 2)
         # buhar YUMURTADAN ONCE: havadaki yumurtanin ustune denk gelen serit onde
         # kalirsa yumurtaya bulasmis bir leke gibi okunuyor.
         for (sx, ph, wob) in steam:
