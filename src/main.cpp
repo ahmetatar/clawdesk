@@ -96,14 +96,33 @@ bool ctxHigh = false;
 // STICKY: zaten bir idle pozundaysak yeniden ZAR ATMAYIZ -> ust uste gelen
 // "dinlenmeye don" olaylari maskotu ekranda takas edip titretmez; poz ancak
 // gercek bir reaksiyon pozundan (hacking/happy/think...) donunce degisir.
-static inline AnimId pickIdle() {
-  uint16_t r = (uint16_t)(esp_random() % idlePoolTotal());
-  for (uint8_t i = 0; i < IDLE_POOL_N - 1; i++) {
-    if (r < IDLE_POOL[i].weight) return IDLE_POOL[i].id;
-    r -= IDLE_POOL[i].weight;
+static inline AnimId pickPose(const PosePick *pool, uint8_t n, uint16_t total) {
+  uint16_t r = (uint16_t)(esp_random() % total);
+  for (uint8_t i = 0; i < n - 1; i++) {
+    if (r < pool[i].weight) return pool[i].id;
+    r -= pool[i].weight;
   }
-  return IDLE_POOL[IDLE_POOL_N - 1].id;                // son uye: kalan tum agirlik
+  return pool[n - 1].id;                               // son uye: kalan tum agirlik
 }
+static inline AnimId pickIdle() { return pickPose(IDLE_POOL, IDLE_POOL_N, idlePoolTotal()); }
+
+// ---- "calisiyor" pozu (WORK_POOL: klavye %75 / tava %25) ----
+// Cekilis HER tool.pre'de yapilmaz: tool.pre -> tool.post arasi kisa oldugu ve
+// tool cagrilari pes pese geldigi icin her seferinde zar atmak maskotu klavye ile
+// tava arasinda saniyede bir takas ettirir. Bunun yerine YAPISKAN pencere: son
+// calisma pozunun uzerinden WORK_STICKY_MS'den az gectiyse ayni poz surdurulur
+// (bir istem boyunca tek maskot), uzun bir sessizlikten sonraki ilk tool yeni zar.
+static const uint32_t WORK_STICKY_MS = 30000;
+static AnimId  workPose   = ANIM_HACKING;
+static uint32_t workPoseAt = 0;                        // 0 = henuz hic secilmedi
+static inline AnimId pickWork() {
+  uint32_t now = millis();
+  if (!workPoseAt || now - workPoseAt >= WORK_STICKY_MS)
+    workPose = pickPose(WORK_POOL, WORK_POOL_N, workPoolTotal());
+  workPoseAt = now;                                    // pencereyi tazele
+  return workPose;
+}
+
 static inline AnimId restAnim() {
   if (ctxHigh) return ANIM_BRAIN_FULL;                // context kritik: beyin uyarisi
   return isIdlePose(curAnim) ? curAnim : pickIdle();
@@ -145,9 +164,7 @@ static bool isWaitingTool(const char *t) {
 static int mapEvent(const Ev &e) {
   const char *k = e.k;
   if (!strcmp(k, "think"))          return e.on ? ANIM_THINK : ANIM_IDLE;
-  // DENEME (feat/cooking-mascot): "calisiyor" pozu klavye yerine TAVA. Geri almak
-  // icin ANIM_COOKING -> ANIM_HACKING; hacking anim'i yerinde duruyor.
-  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : ANIM_COOKING;
+  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : pickWork();
   if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
   if (!strcmp(k, "git"))            return ANIM_HAPPY;
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;

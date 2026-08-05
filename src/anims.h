@@ -58,21 +58,38 @@ static const Anim ANIMS[ANIM_COUNT] = {
 // Sade idle VARSAYILANDIR; ozel pozlar (muzik vb.) nadir surpriz olsun diye dusuk
 // agirlik alir — uniform cekilis 2 uyeli havuzda %50 yapiyordu, ekranda fazlaydi.
 // Yeni maskot eklerken: agirligi 10-15 civari tut, ANIM_IDLE'i buyuk birak.
-struct IdlePose { AnimId id; uint8_t weight; };
-static const IdlePose IDLE_POOL[] = {
+// PosePick: agirlikli maskot havuzu uyesi (hem dinlenme hem "calisiyor" havuzu ayni
+// yapiyi kullanir; cekilis + uyelik testi tek yerde -> poolTotal/inPool).
+struct PosePick { AnimId id; uint8_t weight; };
+static inline uint16_t poolTotal(const PosePick *p, uint8_t n) {
+  uint16_t t = 0;
+  for (uint8_t i = 0; i < n; i++) t += p[i].weight;
+  return t;
+}
+static inline bool inPool(const PosePick *p, uint8_t n, AnimId id) {
+  for (uint8_t i = 0; i < n; i++) if (p[i].id == id) return true;
+  return false;
+}
+
+static const PosePick IDLE_POOL[] = {
   { ANIM_IDLE,       85 },   // sade bekleme (varsayilan)
   { ANIM_IDLE_MUSIC, 15 },   // kulaklikla muzik (nadir)
 };
 static const uint8_t IDLE_POOL_N = sizeof(IDLE_POOL) / sizeof(IDLE_POOL[0]);
-static inline uint16_t idlePoolTotal() {
-  uint16_t t = 0;
-  for (uint8_t i = 0; i < IDLE_POOL_N; i++) t += IDLE_POOL[i].weight;
-  return t;
-}
-static inline bool isIdlePose(AnimId id) {
-  for (uint8_t i = 0; i < IDLE_POOL_N; i++) if (IDLE_POOL[i].id == id) return true;
-  return false;
-}
+static inline uint16_t idlePoolTotal() { return poolTotal(IDLE_POOL, IDLE_POOL_N); }
+static inline bool isIdlePose(AnimId id) { return inPool(IDLE_POOL, IDLE_POOL_N, id); }
+
+// ---- "calisiyor" (tool.pre) havuzu ----
+// Calisma pozu da tek maskot degil: klavye VARSAYILAN, tavada pisiren clawd nadir
+// surpriz. Idle havuzundan tek farki main.cpp'deki YAPISKANLIK penceresi — cekilis
+// her tool cagrisinda degil, calisma serisi basina yapilir (bkz. pickWork).
+static const PosePick WORK_POOL[] = {
+  { ANIM_HACKING, 75 },   // klavyede kod yazan clawd (varsayilan)
+  { ANIM_COOKING, 25 },   // tavada bir seyler pisiren clawd
+};
+static const uint8_t WORK_POOL_N = sizeof(WORK_POOL) / sizeof(WORK_POOL[0]);
+static inline uint16_t workPoolTotal() { return poolTotal(WORK_POOL, WORK_POOL_N); }
+static inline bool isWorkPose(AnimId id) { return inPool(WORK_POOL, WORK_POOL_N, id); }
 
 // Bu anim'in kac SATIRINI ciz. Alt bant HUD 3 satiri (spinner + reset-sayaci + status
 // line) icin bosaltilir: normal anim'ler 51 satira kirpilir (ekran y[24, 24+51*3=177)),
