@@ -642,56 +642,105 @@ def anim_tickle(n=8):
 HP_DARK = (46, 44, 62, 255)     # kulaklik govdesi (koyu, klavye kasasiyla ayni aile)
 HP_MID  = (86, 84, 112, 255)    # kulak yastigi
 HP_HI   = (168, 166, 200, 255)  # ust-sol parlama (3B his)
-HP_ACC  = (232, 120, 70, 255)   # dis yuz aksani = clawd turuncusu (Enter tusuyla ayni)
+HP_ACC  = (232, 120, 70, 255)   # kap ortasindaki minik "driver" vurgusu (clawd turuncusu)
+HP_EDGE = (22, 20, 32, 255)     # cok koyu dis hat: sicak turuncu govdeden ayirir
 NOTE_A  = (120, 200, 190, 255)  # nota renkleri (teal / amber, donusumlu)
 NOTE_B  = (240, 190, 96, 255)
 
-# 8'lik nota glifi (5x6): sap + bayrak + govde
-_NOTE_PX = [(3,0),(4,0),(4,1),(4,2),                     # bayrak
-            (3,1),(3,2),(3,3),(3,4),                     # sap
-            (0,4),(1,4),(2,4),(0,5),(1,5),(2,5)]         # govde
+# --- nota glifleri: TEK 8'lik (sap+bayrak+govde) ve KIRISLI cift 8'lik (♫) ---
+# Kucuk boyutta okunabilirlik icin govde DOLU ve saptan belirgin genis; iki farkli
+# glif kullanmak "muzik" okumasini guclendirir (tek sembol tekrarindan iyi).
+_NOTE1 = {  # 7x9  ♪
+    "px": [(4,0),(4,1),(4,2),(4,3),(4,4),(4,5),(4,6),                 # sap
+           (5,0),(6,1),(6,2),(5,3),                                   # bayrak (kivrimli)
+           (1,6),(2,6),(3,6),
+           (0,7),(1,7),(2,7),(3,7),
+           (1,8),(2,8),(3,8)],                                        # dolu govde
+    "hi": [(1,7)], "w": 7, "h": 9,
+}
+_NOTE2 = {  # 8x8  ♫ — govdeler saplarin SOLUNDA (klasik dizilim), kiris ustte
+    "px": [(2,0),(3,0),(4,0),(5,0),(6,0),(7,0),                       # kiris (beam)
+           (2,1),(3,1),(4,1),(5,1),(6,1),(7,1),
+           (2,2),(2,3),(2,4),                                         # sol sap
+           (7,2),(7,3),(7,4),                                         # sag sap
+           (0,5),(1,5),(2,5),(0,6),(1,6),(2,6),(1,7),(2,7),           # sol govde (yuvarlak)
+           (5,5),(6,5),(7,5),(5,6),(6,6),(7,6),(6,7),(7,7)],          # sag govde
+    "hi": [(0,5),(5,5)], "w": 8, "h": 8,
+}
 
-def draw_note(c, x, y, col, alpha=255):
-    """Minik 8'lik notayi (x,y) sol-ust kosesinden, alpha ile ciz."""
-    spr = Image.new("RGBA", (5, 6), (0, 0, 0, 0)); p = spr.load()
-    r, g, b, _ = col
-    for (nx, ny) in _NOTE_PX: p[nx, ny] = (r, g, b, alpha)
+def draw_note(c, x, y, col, alpha=255, glyph=0):
+    """Nota glifini (x,y) sol-ust kosesinden, alpha ile ciz. glyph 0=♪, 1=♫."""
+    g = (_NOTE1, _NOTE2)[glyph % 2]
+    spr = Image.new("RGBA", (g["w"], g["h"]), (0, 0, 0, 0)); p = spr.load()
+    r, gg, b, _ = col
+    for (nx, ny) in g["px"]: p[nx, ny] = (r, gg, b, alpha)
+    for (nx, ny) in g["hi"]:                                # ic parlama = hacim
+        p[nx, ny] = (min(255, r + 60), min(255, gg + 60), min(255, b + 60), alpha)
     c.alpha_composite(spr, (x, y))
 
 def draw_headphones(c, dx=0, dy=0):
-    """Kulak USTU kulaklik: kafanin USTUNDEN gecen kemer + iki yanda kulak kabi.
+    """Kulak USTU kulaklik. Okunabilirligin uc sarti (kucuk piksel-artta):
+      1) kemer kafadan AYRIK gecsin (arada bosluk gorunsun) — yapisik olursa
+         "sapka/sac bandi" gibi okunur,
+      2) kulak kaplari BUYUK ve dikey (kulak ustu his) + ic yastik ayri tonda,
+      3) kemer ile kap arasinda kisa DIKEY baglanti (askı) olsun — bu detay
+         siluetin "kulaklik" olarak taninmasini saglayan sey.
     Koordinatlar clawd-yerel (44x30) -> canvas'a (CX+dx, CY+dy) ile tasinir; boylece
     kulaklik maskotun bob/lean hareketiyle BIRLIKTE kayar (kaymaz/ayrilmaz)."""
     p = c.load()
     def put(lx, ly, col):
         x, y = CX + dx + lx, CY + dy + ly
         if 0 <= x < CANVAS and 0 <= y < CANVAS: p[x, y] = col
-    # --- kemer: clawd'in TEPESINDE kavis (y=0 govde ustu, -4'e kadar cikar) ---
-    for lx in range(4, 40):
-        t = (lx - 21.5) / 17.5
-        ly = round(-4 + 4 * t * t)                  # kenarlarda y=0, ortada y=-4
-        put(lx, ly, HP_DARK)
-        put(lx, ly + 1, HP_DARK)
-        if 8 <= lx <= 20: put(lx, ly, HP_HI)        # ust-sol parlama
-    # --- kulak kaplari: govdenin (x7..36) iki yaninda, kol bandinin (y7-14) USTUNDE ---
-    for (x0, outer) in ((3, 3), (37, 40)):
-        for ly in range(1, 7):
-            for lx in range(x0, x0 + 4):
-                put(lx, ly, HP_DARK)
-        for ly in range(2, 6):                      # ic yastik
-            for lx in range(x0 + 1, x0 + 3):
+
+    # Kaplar govdeye BITISIK olmali (arada 1px bosluk kalirsa "havada duran kutu"
+    # gibi okunur): govde x7..36 -> sol kap 1..6, sag kap 37..42 (6 genis).
+    CUP_L, CUP_R = 1, 37
+    CUP_W = 6
+    # Kaplar GOZ hizasina otursun (gozler ly3..6) ama kollarin y7 bandina girmesin:
+    CUP_Y0, CUP_H = -1, 8
+    ARM_L, ARM_R = CUP_L + 2, CUP_R + 3   # askilarin x'i (kap ortasi)
+
+    # --- kemer: kafanin USTUNDEN AYRIK gecen kavis (ortada 8px yukarida) ---
+    for lx in range(ARM_L, ARM_R + 1):
+        t = (lx - (ARM_L + ARM_R) / 2) / ((ARM_R - ARM_L) / 2)
+        ly = round(-4 - 6 * (1 - t * t))            # uclarda -4, ortada -10
+        put(lx, ly, HP_DARK); put(lx, ly + 1, HP_DARK); put(lx, ly + 2, HP_MID)
+        if lx <= (ARM_L + ARM_R) // 2: put(lx, ly, HP_HI)   # ust-sol parlama
+
+    # --- askilar: kemer ucundan kabin tepesine kisa dikey bag ---
+    for lx in (ARM_L, ARM_R):
+        for ly in range(-4, CUP_Y0 + 1):
+            put(lx, ly, HP_DARK); put(lx + 1, ly, HP_MID)
+
+    # --- kulak kaplari ---
+    # Kontrast kurali: kap SOGUK-KOYU kalir (clawd sicak turuncu -> ayrisir). Onceki
+    # denemede kabin DIS yuzu turuncuydu; govdenin turuncusuyla ayni aileye dustugu
+    # icin kap "ince cubuk" gibi okundu. Simdi: cok koyu OUTLINE + koyu kabuk +
+    # ACIK yastik ovali + ortada minik turuncu "driver" noktasi (tek sicak vurgu).
+    for x0 in (CUP_L, CUP_R):
+        for ly in range(CUP_Y0, CUP_Y0 + CUP_H):
+            edge_row = ly in (CUP_Y0, CUP_Y0 + CUP_H - 1)
+            for lx in range(x0, x0 + CUP_W):
+                if edge_row and lx in (x0, x0 + CUP_W - 1): continue   # yuvarlatilmis kose
+                outline = (edge_row or lx in (x0, x0 + CUP_W - 1))
+                put(lx, ly, HP_EDGE if outline else HP_DARK)
+        # ic yastik: dis hattin hemen icinde acik alan -> "kulak yastigi" okumasi
+        for ly in range(CUP_Y0 + 1, CUP_Y0 + CUP_H - 1):
+            for lx in range(x0 + 1, x0 + CUP_W - 1):
                 put(lx, ly, HP_MID)
-        for ly in range(2, 6):                      # dis yuz aksani (turuncu)
-            put(outer, ly, HP_ACC)
-        put(x0 + 1, 2, HP_HI)                       # minik parlama
+        put(x0 + 1, CUP_Y0 + 1, HP_HI)                                # ust-sol parlama
+        cy = CUP_Y0 + CUP_H // 2                                       # ortada driver noktasi
+        put(x0 + 2, cy, HP_ACC); put(x0 + 3, cy, HP_ACC)
+        put(x0 + 2, cy + 1, HP_ACC); put(x0 + 3, cy + 1, HP_ACC)
 
 def anim_idle_music(n=8):
     """Kulaklikla muzik dinleyen clawd: > < mutlu gozler, ritme uyan hafif kafa
     sallama (2 vurus) + yana yaslanma, kollar sirayla tempo tutar, iki yandan
     yukari suzulen notalar. Sakin bir DINLENME pozu (idle havuzunun 2. uyesi)."""
     out = []
-    # notalar: (baslangic_x, taban_y, faz) — omur boyunca yukari suzulup soner
-    notes = [(54, 22, 0), (3, 18, 3), (57, 12, 5)]
+    # notalar: (baslangic_x, taban_y, faz, glif) — omur boyunca yukari suzulup soner.
+    # Sag/sol dengeli, clawd'in KOL bandini (canvas x10..16 / 47..53) kesmez.
+    notes = [(54, 30, 0, 0), (1, 26, 3, 1), (55, 18, 5, 1)]
     life = 5
     for i in range(n):
         beat = i % 4
@@ -703,12 +752,12 @@ def anim_idle_music(n=8):
         c = base_canvas()
         place(c, cl, dx=dx, dy=dy)
         draw_headphones(c, dx=dx, dy=dy)                        # kulaklik maskotla BIRLIKTE kayar
-        for k, (nx, ny, ph) in enumerate(notes):
+        for k, (nx, ny, ph, gl) in enumerate(notes):
             age = (i - ph) % n
             if age >= life: continue
-            a = 255 - int(200 * age / life)                     # yukseldikce soner
-            draw_note(c, nx + (1 if age % 2 else 0), ny - age * 2,
-                      NOTE_A if k % 2 == 0 else NOTE_B, a)
+            a = 255 - int(190 * age / life)                     # yukseldikce soner
+            draw_note(c, nx + (1 if age % 2 else 0), ny - age * 3,
+                      NOTE_A if k % 2 == 0 else NOTE_B, a, gl)
         out.append(c)
     return out
 
