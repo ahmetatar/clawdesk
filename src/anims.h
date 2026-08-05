@@ -48,7 +48,7 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_brain_full, CLAWD_BRAIN_FULL_FRAMES, 180, false, false, true, "brain_full" },  // context kritik: beyin bardak gibi dolup bosalir
   { clawd_compact, CLAWD_COMPACT_FRAMES,  150, false, false, true,  "compact" },  // PreCompact: beyin + minik yanip sonen yildizlar
   { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // DINLENME havuzu #2: kulaklikla muzik
-  { clawd_cooking, CLAWD_COOKING_FRAMES,      111, false, true,  false, "cooking" },  // "calisiyor" DENEMESI: hacking (klavye) yerine tavada pisiren clawd
+  { clawd_cooking, CLAWD_COOKING_FRAMES,      111, false, true,  false, "cooking" },  // UZAYAN is: klavye WORK_LONG_MS'i asinca tavaya gecer (LED yesil, hacking gibi)
 };
 
 // ---- dinlenme (idle) havuzu ----
@@ -79,17 +79,13 @@ static const uint8_t IDLE_POOL_N = sizeof(IDLE_POOL) / sizeof(IDLE_POOL[0]);
 static inline uint16_t idlePoolTotal() { return poolTotal(IDLE_POOL, IDLE_POOL_N); }
 static inline bool isIdlePose(AnimId id) { return inPool(IDLE_POOL, IDLE_POOL_N, id); }
 
-// ---- "calisiyor" (tool.pre) havuzu ----
-// Calisma pozu da tek maskot degil: klavye VARSAYILAN, tavada pisiren clawd nadir
-// surpriz. Idle havuzundan tek farki main.cpp'deki YAPISKANLIK penceresi — cekilis
-// her tool cagrisinda degil, calisma serisi basina yapilir (bkz. pickWork).
-static const PosePick WORK_POOL[] = {
-  { ANIM_HACKING, 75 },   // klavyede kod yazan clawd (varsayilan)
-  { ANIM_COOKING, 25 },   // tavada bir seyler pisiren clawd
-};
-static const uint8_t WORK_POOL_N = sizeof(WORK_POOL) / sizeof(WORK_POOL[0]);
-static inline uint16_t workPoolTotal() { return poolTotal(WORK_POOL, WORK_POOL_N); }
-static inline bool isWorkPose(AnimId id) { return inPool(WORK_POOL, WORK_POOL_N, id); }
+// ---- "calisiyor" pozlari: klavye -> (uzarsa) tava ----
+// Calisma pozu RASTGELE SECILMEZ. tool.pre her zaman klavyeyle baslar; is idle'a
+// donmeden WORK_LONG_MS'i asarsa maskot tavaya gecer ve is bitene kadar orada kalir
+// (bkz. main.cpp workSince). Yani tava bir SURPRIZ degil, BILGI: "bu is uzadi,
+// kaynatiyor". Gecis tek yonlu oldugu icin pes pese tool cagrilarinda takas/titreme
+// olmaz — agirlikli rastgele secimin (eski WORK_POOL) asil sorunu buydu.
+static inline bool isWorkPose(AnimId id) { return id == ANIM_HACKING || id == ANIM_COOKING; }
 
 // Bu anim'in kac SATIRINI ciz. Alt bant HUD 3 satiri (spinner + reset-sayaci + status
 // line) icin bosaltilir: normal anim'ler 51 satira kirpilir (ekran y[24, 24+51*3=177)),
