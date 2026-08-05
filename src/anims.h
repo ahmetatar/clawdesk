@@ -50,13 +50,25 @@ static const Anim ANIMS[ANIM_COUNT] = {
 };
 
 // ---- dinlenme (idle) havuzu ----
-// "Sakin bekleme" pozu tek maskot degil: her dinlenmeye DONUSTE havuzdan rastgele
-// biri secilir (main.cpp restAnim/pickIdle). Gercek reaksiyon pozlari (hacking/
-// happy/oops/ask/agents) bu havuzun DISINDA — onlar hic degismez.
-static const AnimId IDLE_POOL[] = { ANIM_IDLE, ANIM_IDLE_MUSIC };
+// "Sakin bekleme" pozu tek maskot degil: her dinlenmeye DONUSTE havuzdan AGIRLIKLI
+// rastgele biri secilir (main.cpp restAnim/pickIdle). Gercek reaksiyon pozlari
+// (hacking/happy/oops/ask/agents) bu havuzun DISINDA — onlar hic degismez.
+// Sade idle VARSAYILANDIR; ozel pozlar (muzik vb.) nadir surpriz olsun diye dusuk
+// agirlik alir — uniform cekilis 2 uyeli havuzda %50 yapiyordu, ekranda fazlaydi.
+// Yeni maskot eklerken: agirligi 10-15 civari tut, ANIM_IDLE'i buyuk birak.
+struct IdlePose { AnimId id; uint8_t weight; };
+static const IdlePose IDLE_POOL[] = {
+  { ANIM_IDLE,       85 },   // sade bekleme (varsayilan)
+  { ANIM_IDLE_MUSIC, 15 },   // kulaklikla muzik (nadir)
+};
 static const uint8_t IDLE_POOL_N = sizeof(IDLE_POOL) / sizeof(IDLE_POOL[0]);
+static inline uint16_t idlePoolTotal() {
+  uint16_t t = 0;
+  for (uint8_t i = 0; i < IDLE_POOL_N; i++) t += IDLE_POOL[i].weight;
+  return t;
+}
 static inline bool isIdlePose(AnimId id) {
-  for (uint8_t i = 0; i < IDLE_POOL_N; i++) if (IDLE_POOL[i] == id) return true;
+  for (uint8_t i = 0; i < IDLE_POOL_N; i++) if (IDLE_POOL[i].id == id) return true;
   return false;
 }
 

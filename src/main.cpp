@@ -90,11 +90,20 @@ AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bi
 bool ctxHigh = false;
 
 // ---- dinlenme pozu (idle havuzu) ----
-// Bekleme maskotu tek degil: IDLE_POOL'dan (anims.h) rastgele biri gosterilir.
+// Bekleme maskotu tek degil: IDLE_POOL'dan (anims.h) AGIRLIKLI rastgele biri
+// gosterilir — sade idle %85, kulaklikli muzik pozu %15 (uniform cekilis %50
+// yapiyordu, muzik maskotu ekranda fazla goruluyordu).
 // STICKY: zaten bir idle pozundaysak yeniden ZAR ATMAYIZ -> ust uste gelen
 // "dinlenmeye don" olaylari maskotu ekranda takas edip titretmez; poz ancak
 // gercek bir reaksiyon pozundan (hacking/happy/think...) donunce degisir.
-static inline AnimId pickIdle() { return IDLE_POOL[esp_random() % IDLE_POOL_N]; }
+static inline AnimId pickIdle() {
+  uint16_t r = (uint16_t)(esp_random() % idlePoolTotal());
+  for (uint8_t i = 0; i < IDLE_POOL_N - 1; i++) {
+    if (r < IDLE_POOL[i].weight) return IDLE_POOL[i].id;
+    r -= IDLE_POOL[i].weight;
+  }
+  return IDLE_POOL[IDLE_POOL_N - 1].id;                // son uye: kalan tum agirlik
+}
 static inline AnimId restAnim() {
   if (ctxHigh) return ANIM_BRAIN_FULL;                // context kritik: beyin uyarisi
   return isIdlePose(curAnim) ? curAnim : pickIdle();
