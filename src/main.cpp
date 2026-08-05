@@ -88,7 +88,17 @@ AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bi
 // olur (restAnim()) — DIM/SLEEP'e gecmeden ONCE bir uyari katmani. Gercek reaksiyon
 // pozlarini (hacking/happy/oops/ask/agents) BOZMAZ, yalniz "dinlenmeye donus" hedefini degistirir.
 bool ctxHigh = false;
-static inline AnimId restAnim() { return ctxHigh ? ANIM_BRAIN_FULL : ANIM_IDLE; }
+
+// ---- dinlenme pozu (idle havuzu) ----
+// Bekleme maskotu tek degil: IDLE_POOL'dan (anims.h) rastgele biri gosterilir.
+// STICKY: zaten bir idle pozundaysak yeniden ZAR ATMAYIZ -> ust uste gelen
+// "dinlenmeye don" olaylari maskotu ekranda takas edip titretmez; poz ancak
+// gercek bir reaksiyon pozundan (hacking/happy/think...) donunce degisir.
+static inline AnimId pickIdle() { return IDLE_POOL[esp_random() % IDLE_POOL_N]; }
+static inline AnimId restAnim() {
+  if (ctxHigh) return ANIM_BRAIN_FULL;                // context kritik: beyin uyarisi
+  return isIdlePose(curAnim) ? curAnim : pickIdle();
+}
 
 // ---- alt-agent modu ----
 // agentActive = o an calisan GERCEK alt-agent sayisi (spawn++/done--). >0 iken "agent modu":
@@ -390,7 +400,7 @@ void setup() {
   Serial.println("[clawd] HTTP :80 ayakta (/e /status /words /health)");
 
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
-  setAnim(ANIM_IDLE);
+  setAnim(pickIdle());                               // acilista havuzdan rastgele bekleme maskotu
 
   // HUD: bantlari baslat + ilk cizim. sol-ust WiFi cubuklari; alt sol iki satir
   // (spinner + statusLine ozeti). statusLine POST /status ile dolar.
@@ -557,7 +567,7 @@ void loop() {
       setAnim(restAnim()); setHudCat(HC_IDLE);
     } else if (!agentMode) {
       int id = mapEvent(e);
-      if (id == ANIM_IDLE) id = restAnim();          // "dinlenmeye don" hedefi: context kritikse beyin
+      if (id == ANIM_IDLE) id = restAnim();          // "dinlenmeye don" hedefi: ctx kritikse beyin, degilse havuzdan maskot
       if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
     }
 
@@ -611,7 +621,7 @@ void loop() {
     bool touchAnim = (curAnim == ANIM_TICKLE || curAnim == ANIM_LOVE);
     AnimId back = touchAnim ? returnAnim : restAnim();
     setAnim(back);
-    if (back == ANIM_IDLE || back == ANIM_BRAIN_FULL) setHudCat(HC_IDLE);
+    if (isIdlePose(back) || back == ANIM_BRAIN_FULL) setHudCat(HC_IDLE);
   }
 
   // 5) Status kuyrugu: Claude Code statusLine ozeti. GUC yonetimine DOKUNMAZ
@@ -628,8 +638,8 @@ void loop() {
     if (nowHigh != ctxHigh) {
       ctxHigh = nowHigh;
       if (!agentMode) {
-        if (ctxHigh && curAnim == ANIM_IDLE) setAnim(ANIM_BRAIN_FULL);
-        else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(ANIM_IDLE);
+        if (ctxHigh && isIdlePose(curAnim)) setAnim(ANIM_BRAIN_FULL);
+        else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(pickIdle());
       }
     }
   }

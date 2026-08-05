@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "anims/clawd_idle.h"
+#include "anims/clawd_idle_music.h"
 #include "anims/clawd_hacking.h"
 #include "anims/clawd_happy.h"
 #include "anims/clawd_think.h"
@@ -17,7 +18,9 @@
 #include "anims/clawd_brain_full.h"
 #include "anims/clawd_compact.h"
 
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_TICKLE, ANIM_LOVE, ANIM_BRAIN_FULL, ANIM_COMPACT, ANIM_COUNT };
+// NOT: yeni anim'i SONA ekle (ANIMS dizisi bu sirayla eslesir; araya girmek
+// mevcut tum indeksleri kaydirir).
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_TICKLE, ANIM_LOVE, ANIM_BRAIN_FULL, ANIM_COMPACT, ANIM_IDLE_MUSIC, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -43,7 +46,19 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_love,    CLAWD_LOVE_FRAMES,    110, true,  true,  false, "love"    },  // OKSAMA (surtme): > < + yukselen kalpler
   { clawd_brain_full, CLAWD_BRAIN_FULL_FRAMES, 180, false, false, true, "brain_full" },  // context kritik: beyin bardak gibi dolup bosalir
   { clawd_compact, CLAWD_COMPACT_FRAMES,  150, false, false, true,  "compact" },  // PreCompact: beyin + minik yanip sonen yildizlar
+  { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // DINLENME havuzu #2: kulaklikla muzik
 };
+
+// ---- dinlenme (idle) havuzu ----
+// "Sakin bekleme" pozu tek maskot degil: her dinlenmeye DONUSTE havuzdan rastgele
+// biri secilir (main.cpp restAnim/pickIdle). Gercek reaksiyon pozlari (hacking/
+// happy/oops/ask/agents) bu havuzun DISINDA — onlar hic degismez.
+static const AnimId IDLE_POOL[] = { ANIM_IDLE, ANIM_IDLE_MUSIC };
+static const uint8_t IDLE_POOL_N = sizeof(IDLE_POOL) / sizeof(IDLE_POOL[0]);
+static inline bool isIdlePose(AnimId id) {
+  for (uint8_t i = 0; i < IDLE_POOL_N; i++) if (IDLE_POOL[i] == id) return true;
+  return false;
+}
 
 // Bu anim'in kac SATIRINI ciz. Alt bant HUD 3 satiri (spinner + reset-sayaci + status
 // line) icin bosaltilir: normal anim'ler 51 satira kirpilir (ekran y[24, 24+51*3=177)),

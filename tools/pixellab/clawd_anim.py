@@ -635,7 +635,135 @@ def anim_tickle(n=8):
         out.append(c)
     return out
 
-ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
+# --- idle havuzu #2: KULAK USTU KULAKLIK ile muzik dinleyen clawd ---
+# "Dinlenme" pozu tek maskot olmasin diye ikinci bir sakin poz. clawd'in KENDI
+# pikselleri DEGISMEZ (kimlik korunur) — kulaklik tamamen deterministik ustluk
+# katman, klavye/dusunce-balonu ile ayni recete (PixelLab GEREKMEZ).
+HP_DARK = (46, 44, 62, 255)     # kulaklik govdesi (koyu, klavye kasasiyla ayni aile)
+HP_MID  = (86, 84, 112, 255)    # kulak yastigi
+HP_HI   = (168, 166, 200, 255)  # ust-sol parlama (3B his)
+HP_ACC  = (232, 120, 70, 255)   # kap ortasindaki minik "driver" vurgusu (clawd turuncusu)
+HP_EDGE = (22, 20, 32, 255)     # cok koyu dis hat: sicak turuncu govdeden ayirir
+NOTE_A  = (120, 200, 190, 255)  # nota renkleri (teal / amber, donusumlu)
+NOTE_B  = (240, 190, 96, 255)
+
+# --- nota glifleri: TEK 8'lik (sap+bayrak+govde) ve KIRISLI cift 8'lik (♫) ---
+# Kucuk boyutta okunabilirlik icin govde DOLU ve saptan belirgin genis; iki farkli
+# glif kullanmak "muzik" okumasini guclendirir (tek sembol tekrarindan iyi).
+_NOTE1 = {  # 7x9  ♪
+    "px": [(4,0),(4,1),(4,2),(4,3),(4,4),(4,5),(4,6),                 # sap
+           (5,0),(6,1),(6,2),(5,3),                                   # bayrak (kivrimli)
+           (1,6),(2,6),(3,6),
+           (0,7),(1,7),(2,7),(3,7),
+           (1,8),(2,8),(3,8)],                                        # dolu govde
+    "hi": [(1,7)], "w": 7, "h": 9,
+}
+_NOTE2 = {  # 8x8  ♫ — govdeler saplarin SOLUNDA (klasik dizilim), kiris ustte
+    "px": [(2,0),(3,0),(4,0),(5,0),(6,0),(7,0),                       # kiris (beam)
+           (2,1),(3,1),(4,1),(5,1),(6,1),(7,1),
+           (2,2),(2,3),(2,4),                                         # sol sap
+           (7,2),(7,3),(7,4),                                         # sag sap
+           (0,5),(1,5),(2,5),(0,6),(1,6),(2,6),(1,7),(2,7),           # sol govde (yuvarlak)
+           (5,5),(6,5),(7,5),(5,6),(6,6),(7,6),(6,7),(7,7)],          # sag govde
+    "hi": [(0,5),(5,5)], "w": 8, "h": 8,
+}
+
+def draw_note(c, x, y, col, alpha=255, glyph=0):
+    """Nota glifini (x,y) sol-ust kosesinden, alpha ile ciz. glyph 0=♪, 1=♫."""
+    g = (_NOTE1, _NOTE2)[glyph % 2]
+    spr = Image.new("RGBA", (g["w"], g["h"]), (0, 0, 0, 0)); p = spr.load()
+    r, gg, b, _ = col
+    for (nx, ny) in g["px"]: p[nx, ny] = (r, gg, b, alpha)
+    for (nx, ny) in g["hi"]:                                # ic parlama = hacim
+        p[nx, ny] = (min(255, r + 60), min(255, gg + 60), min(255, b + 60), alpha)
+    c.alpha_composite(spr, (x, y))
+
+def draw_headphones(c, dx=0, dy=0):
+    """Kulak USTU kulaklik. Okunabilirligin uc sarti (kucuk piksel-artta):
+      1) kemer kafadan AYRIK gecsin (arada bosluk gorunsun) — yapisik olursa
+         "sapka/sac bandi" gibi okunur,
+      2) kulak kaplari BUYUK ve dikey (kulak ustu his) + ic yastik ayri tonda,
+      3) kemer ile kap arasinda kisa DIKEY baglanti (askı) olsun — bu detay
+         siluetin "kulaklik" olarak taninmasini saglayan sey.
+    Koordinatlar clawd-yerel (44x30) -> canvas'a (CX+dx, CY+dy) ile tasinir; boylece
+    kulaklik maskotun bob/lean hareketiyle BIRLIKTE kayar (kaymaz/ayrilmaz)."""
+    p = c.load()
+    def put(lx, ly, col):
+        x, y = CX + dx + lx, CY + dy + ly
+        if 0 <= x < CANVAS and 0 <= y < CANVAS: p[x, y] = col
+
+    # Kaplar govdeye BITISIK olmali (arada 1px bosluk kalirsa "havada duran kutu"
+    # gibi okunur): govde x7..36 -> sol kap 1..6, sag kap 37..42 (6 genis).
+    CUP_L, CUP_R = 1, 37
+    CUP_W = 6
+    # Kaplar GOZ hizasina otursun (gozler ly3..6) ama kollarin y7 bandina girmesin:
+    CUP_Y0, CUP_H = -1, 8
+    ARM_L, ARM_R = CUP_L + 2, CUP_R + 3   # askilarin x'i (kap ortasi)
+
+    # --- kemer: kafanin USTUNDEN AYRIK gecen INCE kavis (2px) ---
+    # Kemer FUME ZEMIN uzerinde durur: koyu tonla cizilirse (HP_DARK 46,44,62 vs
+    # zemin 36,39,44) zemine karisip kaybolur — bu yuzden kemer ACIK tonlarla
+    # (HP_HI ust + HP_MID alt) cizilir, koyu ton yalniz govde uzerindeki parcalarda
+    # kullanilir. Kalinlik 3 -> 2 px (3px "kask kayisi" gibi agir duruyordu).
+    for lx in range(ARM_L, ARM_R + 1):
+        t = (lx - (ARM_L + ARM_R) / 2) / ((ARM_R - ARM_L) / 2)
+        ly = round(-4 - 6 * (1 - t * t))            # uclarda -4, ortada -10
+        put(lx, ly, HP_HI)                          # ust: parlak kenar
+        put(lx, ly + 1, HP_MID)                     # alt: govde tonu
+
+    # --- askilar: kemer ucundan kabin tepesine kisa dikey bag (yine acik ton) ---
+    for lx in (ARM_L, ARM_R):
+        for ly in range(-4, CUP_Y0 + 1):
+            put(lx, ly, HP_MID); put(lx + 1, ly, HP_DARK)
+
+    # --- kulak kaplari ---
+    # Kap iki FARKLI zemine bakiyor: ic yaridan clawd'in SICAK turuncusu, dis
+    # yaridan KOYU fume zemin. Tek tonla ikisine birden ayrisamaz -> cerceve ACIK
+    # (HP_MID: zemine karsi gorunur), ic dolgu KOYU (HP_DARK: turuncuya karsi
+    # ayrisir), ortada tek sicak vurgu (turuncu "driver"). Onceki surumde cerceve
+    # cok koyuydu (HP_EDGE) ve dis kenar zemine karisiyordu.
+    for x0 in (CUP_L, CUP_R):
+        for ly in range(CUP_Y0, CUP_Y0 + CUP_H):
+            edge_row = ly in (CUP_Y0, CUP_Y0 + CUP_H - 1)
+            for lx in range(x0, x0 + CUP_W):
+                if edge_row and lx in (x0, x0 + CUP_W - 1): continue   # yuvarlatilmis kose
+                rim = (edge_row or lx in (x0, x0 + CUP_W - 1))
+                put(lx, ly, HP_MID if rim else HP_DARK)
+        put(x0 + 1, CUP_Y0 + 1, HP_HI)                                # ust-sol parlama
+        cy = CUP_Y0 + CUP_H // 2                                       # ortada driver noktasi
+        put(x0 + 2, cy, HP_ACC); put(x0 + 3, cy, HP_ACC)
+        put(x0 + 2, cy + 1, HP_ACC); put(x0 + 3, cy + 1, HP_ACC)
+
+def anim_idle_music(n=8):
+    """Kulaklikla muzik dinleyen clawd: > < mutlu gozler, ritme uyan hafif kafa
+    sallama (2 vurus) + yana yaslanma, kollar sirayla tempo tutar, iki yandan
+    yukari suzulen notalar. Sakin bir DINLENME pozu (idle havuzunun 2. uyesi)."""
+    out = []
+    # notalar: (baslangic_x, taban_y, faz, glif) — omur boyunca yukari suzulup soner.
+    # Sag/sol dengeli, clawd'in KOL bandini (canvas x10..16 / 47..53) kesmez.
+    notes = [(54, 30, 0, 0), (1, 26, 3, 1), (55, 18, 5, 1)]
+    life = 5
+    for i in range(n):
+        beat = i % 4
+        dy   = -1 if beat in (1, 2) else 0                      # ritim: 2 vurus/dongu
+        dx   = (0, 0, 1, 1, 0, 0, -1, -1)[i % 8]                # hafif yana yaslanma
+        larm = -1 if beat < 2 else 0                            # kollar sirayla tempo tutar
+        rarm = 0 if beat < 2 else -1
+        cl = clawd_variant(eyes="happy", larm_dy=larm, rarm_dy=rarm)
+        c = base_canvas()
+        place(c, cl, dx=dx, dy=dy)
+        draw_headphones(c, dx=dx, dy=dy)                        # kulaklik maskotla BIRLIKTE kayar
+        for k, (nx, ny, ph, gl) in enumerate(notes):
+            age = (i - ph) % n
+            if age >= life: continue
+            a = 255 - int(190 * age / life)                     # yukseldikce soner
+            draw_note(c, nx + (1 if age % 2 else 0), ny - age * 3,
+                      NOTE_A if k % 2 == 0 else NOTE_B, a, gl)
+        out.append(c)
+    return out
+
+ANIMS = {"idle": anim_idle, "idle_music": anim_idle_music,
+         "hacking": anim_hacking, "happy": anim_happy,
          "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
          "agents": anim_agents, "love": anim_love, "tickle": anim_tickle,
          "brain_full": anim_brain_full, "compact": anim_compact}
