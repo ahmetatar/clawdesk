@@ -17,10 +17,11 @@
 #include "anims/clawd_love.h"
 #include "anims/clawd_brain_full.h"
 #include "anims/clawd_compact.h"
+#include "anims/clawd_cooking.h"
 
 // NOT: yeni anim'i SONA ekle (ANIMS dizisi bu sirayla eslesir; araya girmek
 // mevcut tum indeksleri kaydirir).
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_TICKLE, ANIM_LOVE, ANIM_BRAIN_FULL, ANIM_COMPACT, ANIM_IDLE_MUSIC, ANIM_COUNT };
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_AGENTS, ANIM_TICKLE, ANIM_LOVE, ANIM_BRAIN_FULL, ANIM_COMPACT, ANIM_IDLE_MUSIC, ANIM_COOKING, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -47,6 +48,7 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_brain_full, CLAWD_BRAIN_FULL_FRAMES, 180, false, false, true, "brain_full" },  // context kritik: beyin bardak gibi dolup bosalir
   { clawd_compact, CLAWD_COMPACT_FRAMES,  150, false, false, true,  "compact" },  // PreCompact: beyin + minik yanip sonen yildizlar
   { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // DINLENME havuzu #2: kulaklikla muzik
+  { clawd_cooking, CLAWD_COOKING_FRAMES,      111, false, true,  false, "cooking" },  // "calisiyor" DENEMESI: hacking (klavye) yerine tavada pisiren clawd
 };
 
 // ---- dinlenme (idle) havuzu ----

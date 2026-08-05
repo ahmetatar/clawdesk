@@ -145,7 +145,9 @@ static bool isWaitingTool(const char *t) {
 static int mapEvent(const Ev &e) {
   const char *k = e.k;
   if (!strcmp(k, "think"))          return e.on ? ANIM_THINK : ANIM_IDLE;
-  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : ANIM_HACKING;
+  // DENEME (feat/cooking-mascot): "calisiyor" pozu klavye yerine TAVA. Geri almak
+  // icin ANIM_COOKING -> ANIM_HACKING; hacking anim'i yerinde duruyor.
+  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : ANIM_COOKING;
   if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
   if (!strcmp(k, "git"))            return ANIM_HAPPY;
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
