@@ -441,6 +441,7 @@ static bool inCorner(int rawx, int rawy) {
 static void toggleUsage() {
   uiUsage = !uiUsage;
   Serial.printf("[clawd] gorunum -> %s\n", uiUsage ? "usage" : "normal");
+  uiToggleAnimate = true;                            // toggle topuzu kayarak gecsin (yalniz bu yolda)
   if (uiUsage) {
     usage.markAllDirty();                            // render() zemin dahil her seyi cizer
   } else {

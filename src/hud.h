@@ -81,11 +81,11 @@ public:
   // Her loop cagrilir; yalniz kirli satirlari cizer. Uyku sirasinda main CAGIRMAZ.
   void render() {
     if (!_tft) return;
-    if (_btnDirty)    { drawBtn();    _btnDirty    = false; }
     if (_wifiDirty)   { drawWifi();   _wifiDirty   = false; }
     if (_actionDirty) { drawAction(); _actionDirty = false; }
     if (_resetDirty)  { drawReset();  _resetDirty  = false; }
     if (_statusDirty) { drawStatus(); _statusDirty = false; }
+    if (_btnDirty)    { drawBtn();    _btnDirty    = false; }   // en son: kayma anim. digerlerini bekletmesin
   }
 
 private:

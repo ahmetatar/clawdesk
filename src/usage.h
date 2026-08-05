@@ -61,6 +61,7 @@ public:
       drawCard(CARD1_Y, "Current", _h5, _h5r);
       drawCard(CARD2_Y, "Weekly",  _wk, _wkr);
       drawSpinner();
+      drawSwapIcon();          // en sona: kayma animasyonu kartlari bekletmesin
       _full = false;
       return;
     }
@@ -109,8 +110,7 @@ private:
   // -- ust bant: ikon + saat + gecis oklari --
   void drawTopBar() {
     _tft->pushImage(8, 2, CLAWD_MINI_W, CLAWD_MINI_H, clawd_mini);   // zemini BG ile ayni
-    drawClock();
-    drawSwapIcon();
+    drawClock();          // toggle burada DEGIL: render() sonunda cizilir (bkz. _full dali)
   }
 
   void drawClock() {
