@@ -635,7 +635,85 @@ def anim_tickle(n=8):
         out.append(c)
     return out
 
-ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
+# --- idle havuzu #2: KULAK USTU KULAKLIK ile muzik dinleyen clawd ---
+# "Dinlenme" pozu tek maskot olmasin diye ikinci bir sakin poz. clawd'in KENDI
+# pikselleri DEGISMEZ (kimlik korunur) — kulaklik tamamen deterministik ustluk
+# katman, klavye/dusunce-balonu ile ayni recete (PixelLab GEREKMEZ).
+HP_DARK = (46, 44, 62, 255)     # kulaklik govdesi (koyu, klavye kasasiyla ayni aile)
+HP_MID  = (86, 84, 112, 255)    # kulak yastigi
+HP_HI   = (168, 166, 200, 255)  # ust-sol parlama (3B his)
+HP_ACC  = (232, 120, 70, 255)   # dis yuz aksani = clawd turuncusu (Enter tusuyla ayni)
+NOTE_A  = (120, 200, 190, 255)  # nota renkleri (teal / amber, donusumlu)
+NOTE_B  = (240, 190, 96, 255)
+
+# 8'lik nota glifi (5x6): sap + bayrak + govde
+_NOTE_PX = [(3,0),(4,0),(4,1),(4,2),                     # bayrak
+            (3,1),(3,2),(3,3),(3,4),                     # sap
+            (0,4),(1,4),(2,4),(0,5),(1,5),(2,5)]         # govde
+
+def draw_note(c, x, y, col, alpha=255):
+    """Minik 8'lik notayi (x,y) sol-ust kosesinden, alpha ile ciz."""
+    spr = Image.new("RGBA", (5, 6), (0, 0, 0, 0)); p = spr.load()
+    r, g, b, _ = col
+    for (nx, ny) in _NOTE_PX: p[nx, ny] = (r, g, b, alpha)
+    c.alpha_composite(spr, (x, y))
+
+def draw_headphones(c, dx=0, dy=0):
+    """Kulak USTU kulaklik: kafanin USTUNDEN gecen kemer + iki yanda kulak kabi.
+    Koordinatlar clawd-yerel (44x30) -> canvas'a (CX+dx, CY+dy) ile tasinir; boylece
+    kulaklik maskotun bob/lean hareketiyle BIRLIKTE kayar (kaymaz/ayrilmaz)."""
+    p = c.load()
+    def put(lx, ly, col):
+        x, y = CX + dx + lx, CY + dy + ly
+        if 0 <= x < CANVAS and 0 <= y < CANVAS: p[x, y] = col
+    # --- kemer: clawd'in TEPESINDE kavis (y=0 govde ustu, -4'e kadar cikar) ---
+    for lx in range(4, 40):
+        t = (lx - 21.5) / 17.5
+        ly = round(-4 + 4 * t * t)                  # kenarlarda y=0, ortada y=-4
+        put(lx, ly, HP_DARK)
+        put(lx, ly + 1, HP_DARK)
+        if 8 <= lx <= 20: put(lx, ly, HP_HI)        # ust-sol parlama
+    # --- kulak kaplari: govdenin (x7..36) iki yaninda, kol bandinin (y7-14) USTUNDE ---
+    for (x0, outer) in ((3, 3), (37, 40)):
+        for ly in range(1, 7):
+            for lx in range(x0, x0 + 4):
+                put(lx, ly, HP_DARK)
+        for ly in range(2, 6):                      # ic yastik
+            for lx in range(x0 + 1, x0 + 3):
+                put(lx, ly, HP_MID)
+        for ly in range(2, 6):                      # dis yuz aksani (turuncu)
+            put(outer, ly, HP_ACC)
+        put(x0 + 1, 2, HP_HI)                       # minik parlama
+
+def anim_idle_music(n=8):
+    """Kulaklikla muzik dinleyen clawd: > < mutlu gozler, ritme uyan hafif kafa
+    sallama (2 vurus) + yana yaslanma, kollar sirayla tempo tutar, iki yandan
+    yukari suzulen notalar. Sakin bir DINLENME pozu (idle havuzunun 2. uyesi)."""
+    out = []
+    # notalar: (baslangic_x, taban_y, faz) — omur boyunca yukari suzulup soner
+    notes = [(54, 22, 0), (3, 18, 3), (57, 12, 5)]
+    life = 5
+    for i in range(n):
+        beat = i % 4
+        dy   = -1 if beat in (1, 2) else 0                      # ritim: 2 vurus/dongu
+        dx   = (0, 0, 1, 1, 0, 0, -1, -1)[i % 8]                # hafif yana yaslanma
+        larm = -1 if beat < 2 else 0                            # kollar sirayla tempo tutar
+        rarm = 0 if beat < 2 else -1
+        cl = clawd_variant(eyes="happy", larm_dy=larm, rarm_dy=rarm)
+        c = base_canvas()
+        place(c, cl, dx=dx, dy=dy)
+        draw_headphones(c, dx=dx, dy=dy)                        # kulaklik maskotla BIRLIKTE kayar
+        for k, (nx, ny, ph) in enumerate(notes):
+            age = (i - ph) % n
+            if age >= life: continue
+            a = 255 - int(200 * age / life)                     # yukseldikce soner
+            draw_note(c, nx + (1 if age % 2 else 0), ny - age * 2,
+                      NOTE_A if k % 2 == 0 else NOTE_B, a)
+        out.append(c)
+    return out
+
+ANIMS = {"idle": anim_idle, "idle_music": anim_idle_music,
+         "hacking": anim_hacking, "happy": anim_happy,
          "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask,
          "agents": anim_agents, "love": anim_love, "tickle": anim_tickle,
          "brain_full": anim_brain_full, "compact": anim_compact}
