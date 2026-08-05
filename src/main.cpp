@@ -89,23 +89,6 @@ AnimId  returnAnim = ANIM_IDLE;                     // dokunmatik tickle/love bi
 // pozlarini (hacking/happy/oops/ask/agents) BOZMAZ, yalniz "dinlenmeye donus" hedefini degistirir.
 bool ctxHigh = false;
 
-// ---- dinlenme pozu (idle havuzu) ----
-// Bekleme maskotu tek degil: IDLE_POOL'dan (anims.h) AGIRLIKLI rastgele biri
-// gosterilir — sade idle %85, kulaklikli muzik pozu %15 (uniform cekilis %50
-// yapiyordu, muzik maskotu ekranda fazla goruluyordu).
-// STICKY: zaten bir idle pozundaysak yeniden ZAR ATMAYIZ -> ust uste gelen
-// "dinlenmeye don" olaylari maskotu ekranda takas edip titretmez; poz ancak
-// gercek bir reaksiyon pozundan (hacking/happy/think...) donunce degisir.
-static inline AnimId pickPose(const PosePick *pool, uint8_t n, uint16_t total) {
-  uint16_t r = (uint16_t)(esp_random() % total);
-  for (uint8_t i = 0; i < n - 1; i++) {
-    if (r < pool[i].weight) return pool[i].id;
-    r -= pool[i].weight;
-  }
-  return pool[n - 1].id;                               // son uye: kalan tum agirlik
-}
-static inline AnimId pickIdle() { return pickPose(IDLE_POOL, IDLE_POOL_N, idlePoolTotal()); }
-
 // ---- uzayan is: klavye -> tava ----
 // workSince = calisma pozuna (klavye) KESINTISIZ girildigi an; idle'a/baska bir poza
 // her donuste sifirlanir (setAnim). Sayac WORK_LONG_MS'i asinca loop() maskotu tavaya
@@ -116,7 +99,9 @@ static uint32_t workSince = 0;                         // 0 = calisma pozunda de
 
 static inline AnimId restAnim() {
   if (ctxHigh) return ANIM_BRAIN_FULL;                // context kritik: beyin uyarisi
-  return isIdlePose(curAnim) ? curAnim : pickIdle();
+  // Zaten bir dinlenme pozundaysak onu KORU (bkz. anims.h isIdlePose): ust uste gelen
+  // "dinlenmeye don" olaylari maskotu takas edip titretmesin. Degilsek sade idle.
+  return isIdlePose(curAnim) ? curAnim : ANIM_IDLE;
 }
 
 // ---- alt-agent modu ----
@@ -426,7 +411,7 @@ void setup() {
   Serial.println("[clawd] HTTP :80 ayakta (/e /status /words /health)");
 
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
-  setAnim(pickIdle());                               // acilista havuzdan rastgele bekleme maskotu
+  setAnim(ANIM_IDLE);                                // acilista sade bekleme maskotu
 
   // HUD: bantlari baslat + ilk cizim. sol-ust WiFi cubuklari; alt sol iki satir
   // (spinner + statusLine ozeti). statusLine POST /status ile dolar.
@@ -593,7 +578,7 @@ void loop() {
       setAnim(restAnim()); setHudCat(HC_IDLE);
     } else if (!agentMode) {
       int id = mapEvent(e);
-      if (id == ANIM_IDLE) id = restAnim();          // "dinlenmeye don" hedefi: ctx kritikse beyin, degilse havuzdan maskot
+      if (id == ANIM_IDLE) id = restAnim();          // "dinlenmeye don" hedefi: ctx kritikse beyin, degilse sade idle
       if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
     }
 
@@ -673,7 +658,7 @@ void loop() {
       ctxHigh = nowHigh;
       if (!agentMode) {
         if (ctxHigh && isIdlePose(curAnim)) setAnim(ANIM_BRAIN_FULL);
-        else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(pickIdle());
+        else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(ANIM_IDLE);
       }
     }
   }
