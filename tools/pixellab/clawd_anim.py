@@ -700,34 +700,35 @@ def draw_headphones(c, dx=0, dy=0):
     CUP_Y0, CUP_H = -1, 8
     ARM_L, ARM_R = CUP_L + 2, CUP_R + 3   # askilarin x'i (kap ortasi)
 
-    # --- kemer: kafanin USTUNDEN AYRIK gecen kavis (ortada 8px yukarida) ---
+    # --- kemer: kafanin USTUNDEN AYRIK gecen INCE kavis (2px) ---
+    # Kemer FUME ZEMIN uzerinde durur: koyu tonla cizilirse (HP_DARK 46,44,62 vs
+    # zemin 36,39,44) zemine karisip kaybolur — bu yuzden kemer ACIK tonlarla
+    # (HP_HI ust + HP_MID alt) cizilir, koyu ton yalniz govde uzerindeki parcalarda
+    # kullanilir. Kalinlik 3 -> 2 px (3px "kask kayisi" gibi agir duruyordu).
     for lx in range(ARM_L, ARM_R + 1):
         t = (lx - (ARM_L + ARM_R) / 2) / ((ARM_R - ARM_L) / 2)
         ly = round(-4 - 6 * (1 - t * t))            # uclarda -4, ortada -10
-        put(lx, ly, HP_DARK); put(lx, ly + 1, HP_DARK); put(lx, ly + 2, HP_MID)
-        if lx <= (ARM_L + ARM_R) // 2: put(lx, ly, HP_HI)   # ust-sol parlama
+        put(lx, ly, HP_HI)                          # ust: parlak kenar
+        put(lx, ly + 1, HP_MID)                     # alt: govde tonu
 
-    # --- askilar: kemer ucundan kabin tepesine kisa dikey bag ---
+    # --- askilar: kemer ucundan kabin tepesine kisa dikey bag (yine acik ton) ---
     for lx in (ARM_L, ARM_R):
         for ly in range(-4, CUP_Y0 + 1):
-            put(lx, ly, HP_DARK); put(lx + 1, ly, HP_MID)
+            put(lx, ly, HP_MID); put(lx + 1, ly, HP_DARK)
 
     # --- kulak kaplari ---
-    # Kontrast kurali: kap SOGUK-KOYU kalir (clawd sicak turuncu -> ayrisir). Onceki
-    # denemede kabin DIS yuzu turuncuydu; govdenin turuncusuyla ayni aileye dustugu
-    # icin kap "ince cubuk" gibi okundu. Simdi: cok koyu OUTLINE + koyu kabuk +
-    # ACIK yastik ovali + ortada minik turuncu "driver" noktasi (tek sicak vurgu).
+    # Kap iki FARKLI zemine bakiyor: ic yaridan clawd'in SICAK turuncusu, dis
+    # yaridan KOYU fume zemin. Tek tonla ikisine birden ayrisamaz -> cerceve ACIK
+    # (HP_MID: zemine karsi gorunur), ic dolgu KOYU (HP_DARK: turuncuya karsi
+    # ayrisir), ortada tek sicak vurgu (turuncu "driver"). Onceki surumde cerceve
+    # cok koyuydu (HP_EDGE) ve dis kenar zemine karisiyordu.
     for x0 in (CUP_L, CUP_R):
         for ly in range(CUP_Y0, CUP_Y0 + CUP_H):
             edge_row = ly in (CUP_Y0, CUP_Y0 + CUP_H - 1)
             for lx in range(x0, x0 + CUP_W):
                 if edge_row and lx in (x0, x0 + CUP_W - 1): continue   # yuvarlatilmis kose
-                outline = (edge_row or lx in (x0, x0 + CUP_W - 1))
-                put(lx, ly, HP_EDGE if outline else HP_DARK)
-        # ic yastik: dis hattin hemen icinde acik alan -> "kulak yastigi" okumasi
-        for ly in range(CUP_Y0 + 1, CUP_Y0 + CUP_H - 1):
-            for lx in range(x0 + 1, x0 + CUP_W - 1):
-                put(lx, ly, HP_MID)
+                rim = (edge_row or lx in (x0, x0 + CUP_W - 1))
+                put(lx, ly, HP_MID if rim else HP_DARK)
         put(x0 + 1, CUP_Y0 + 1, HP_HI)                                # ust-sol parlama
         cy = CUP_Y0 + CUP_H // 2                                       # ortada driver noktasi
         put(x0 + 2, cy, HP_ACC); put(x0 + 3, cy, HP_ACC)
