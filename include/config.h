@@ -118,8 +118,12 @@ constexpr long CLOCK_TZ_OFFSET_S = 3 * 3600;
 // DISINDA olmali ki router baskasina dagitip cakismasin. .201 = havuz disi, ayni
 // LAN /24. CLAWD_HOST (PC hook + statusLine) bu IP'ye ayarlanmali.
 // BASKA bir agda kullanacaksan CLAWD_STATIC_IP'yi 0 yap -> normal DHCP'ye doner.
+//
+// NOT: install.sh bu satiri OTOMATIK yeniden yazar — /24'un son adresini onerir
+// (192.168.1.254) ve Enter'a basilirsa onu yazar. Buradaki .201'i korumak icin
+// kurulum sorusunda IP'yi ELLE .201 girmek gerekir.
 #define CLAWD_STATIC_IP 1
-constexpr uint8_t IP_LOCAL[4]   = {192, 168, 1, 254};
+constexpr uint8_t IP_LOCAL[4]   = {192, 168, 1, 201};
 constexpr uint8_t IP_GATEWAY[4] = {192, 168, 1, 1};
 constexpr uint8_t IP_SUBNET[4]  = {255, 255, 255, 0};
 constexpr uint8_t IP_DNS[4]     = {192, 168, 1, 1};
