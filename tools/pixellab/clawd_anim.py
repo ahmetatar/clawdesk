@@ -269,12 +269,17 @@ YOLK      = (250, 186, 52, 255)
 YOLK_HI   = (255, 226, 130, 255)
 STEAM     = (228, 234, 244, 255)   # sicak turuncu govde uzerinde de beyaz kalmali
 SIZZLE    = (255, 214, 140, 255)   # cizirti kivilcimi
-HAND_SH   = (170, 60, 40, 255)     # elin alt-sag golgesi (govde renginin koyusu)
-HAND_HI   = (232, 104, 74, 255)    # elin ust parlamasi
 
 PAN_W, PAN_H = 38, 13              # agiz elipsi
 PAN_X = 12                         # tava sol kenari (govde ekseniyle hizali: 12+19 = 31)
 PAN_UP = 6                         # tavayi clawd'a GORE yukari al -> sap kisalir (asagi bak)
+
+# Tava sahnesi HACK_UP bandinda cizilir ama klavyeden KISADIR (klavye ayak hizasinda
+# biter, tava gogus hizasinda) -> ayni banda konunca ALTTA buyuk bir bosluk kaliyor,
+# maskot ekranin tepesine yapismis gibi duruyordu. COOK_DOWN tum sahneyi (clawd +
+# tava + yumurta + buhar) birlikte asagi indirir; 11 -> sahnenin alt kenari hacking'in
+# alt kenariyla (row ~48) ayni hizaya gelir, yani cizilen 51 satiri tam doldurur.
+COOK_DOWN = 11
 
 # --- sap: tava DONDURULDU, sap 45 derece YUKARI-SAGA ---
 # Neden: clawd'in sag kolu govdenin yaninda YATAY bir cubuk (sprite y7-14 -> canvas
@@ -297,10 +302,6 @@ HANDLE_DX = 32                    # sapin tavaya baglandigi nokta (agiz elipsini
 HANDLE_DY = 2
 HANDLE_L  = 10                    # uc: py=20 iken (53,13) = sag kolun DIS ucu (x53) hizasi
 
-def _handle_tip(x, y):
-    """Sapin uc pikseli (elin kavradigi nokta) — draw_pan ve draw_hand ayni kaynaktan."""
-    return x + HANDLE_DX + HANDLE_L - 1, y + HANDLE_DY - (HANDLE_L - 1)
-
 def draw_pan(c, x, y):
     """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + 45 derece
     yukari-saga ahsap sap. Sap her sutunda 4 satir: ust-sol parlama + 2 govde +
@@ -322,32 +323,11 @@ def draw_pan(c, x, y):
         d.line([(hx + k, hy - k - 1), (hx + k, hy - k + 3)], fill=PAN_BODY)
         d.point((hx + k, hy - k - 1), fill=PAN_RIM)
 
-def draw_hand(c, x, y):
-    """clawd'in sag ELI sapin ucunu kavrar. El, kolun UCUNDA (sprite'in kendi bandi)
-    durur ve sapin son pikselleri elin ALTINDAN girer -> "sapi tutuyor" okumasi.
-    KURAL: buradan asagi HICBIR kol/bag pikseli inmez (bkz. af05bcc); el yalnizca
-    kolun bittigi yerde 1-2px tasan bir yumruk. Renk clawd'in KENDI govde rengi;
-    koyu-gri bir eldiven tavanin parcasi gibi okunuyordu."""
-    p = c.load()
-    tx, ty = _handle_tip(x, y)
-    # El, sag kol bandinin DIS ucunda (x53 hizasi) sapin ucunu sarar. Tamamen
-    # clawd'in KENDI govde renginde: koyu bir DIS HAT (kapali halka) denendi ve
-    # eli koldan kopuk kirmizi bir yuzuk gibi gosteriyordu -> yalnizca alt-sag
-    # golge + ust parlama birakildi; el kolun dogal devami olarak okunuyor ve
-    # ahsap sap elin icinde biter (sap ucu acikta kalmaz).
-    #   . B B .          B = clawd'in kendi govde rengi (el)
-    #   B h B B          h = ust parlama (isik ust-solda)
-    #   B B B B          s = alt-sag golge (hacim)
-    #   B B B s
-    #   . s s .
-    FIST = ((0,-2,FACE),(1,-2,FACE),
-            (-1,-1,FACE),(0,-1,HAND_HI),(1,-1,FACE),(2,-1,FACE),
-            (-1, 0,FACE),(0, 0,FACE),(1, 0,FACE),(2, 0,FACE),
-            (-1, 1,FACE),(0, 1,FACE),(1, 1,FACE),(2, 1,HAND_SH),
-            (0, 2,HAND_SH),(1, 2,HAND_SH))
-    for (dx, dy, col) in FIST:
-        px_, py_ = tx + dx, ty + dy
-        if 0 <= px_ < CANVAS and 0 <= py_ < CANVAS: p[px_, py_] = col
+# AYRI BIR "EL" SPRITE'I YOK. Once sapin ucuna govde renginde bir yumruk (FIST)
+# koyuluyordu; bu boyutta yumruk kolun ucunda duran TUHAF BIR YUVARLAK olarak
+# okunuyordu (kullanici geri bildirimi). Sapin ucu zaten sag kolun DIS ucuna
+# (x53 hizasi) denk geldigi ve kol tavayla ayni fazda oynadigi icin kavrama
+# ekstra piksel olmadan da "eliyle tutuyor" okunuyor.
 
 def draw_egg(c, cx, cy, flat=False):
     """Sahanda yumurta: ak (alt golgeli) + parlak sari. flat=True -> havada hafif ezik."""
@@ -384,7 +364,7 @@ def anim_cooking(n=8):
     # Tava agzi clawd'in AYAKLARINI yarilar (klavyedeki gibi "arkasinda duruyor"
     # okumasi): daha asagida birakilirsa bacaklar tavayla govde arasinda bosta asili
     # kaliyor ve sahne "tava yere dusmus" gibi gorunuyor.
-    pan_y0 = CY + CH - 3 - HACK_UP - 2 - PAN_UP
+    pan_y0 = CY + CH - 3 - HACK_UP - 2 - PAN_UP + COOK_DOWN
     pan_dy = (0, 1, -2, -1, 0, 1, 0, 0)          # savurma: dip -> yukari itis -> yakalama
     egg_dy = (0, 1, -3, -9, -6, 1, 0, 0)
     # buhar: (x, faz, kivrim) — agiz (x12..49) boyunca ucu, hepsi SAP bandinin
@@ -398,12 +378,11 @@ def anim_cooking(n=8):
                            larm_dy=(0, 0, -1, -1, 0, 0, 0, 0)[i % 8],
                            rarm_dy=pdy)                     # sag kol tavayla TAM ayni fazda
         c = base_canvas()
-        place(c, cl, dy=-HACK_UP)
+        place(c, cl, dy=-HACK_UP + COOK_DOWN)
         py = pan_y0 + pdy
+        # kol (rarm_dy=pdy) ve sap (py=pan_y0+pdy) ayni miktarda oynadigi icin
+        # kavrama hicbir frame'de kopmaz.
         draw_pan(c, PAN_X, py)
-        # el sapin ucunda: kol (rarm_dy=pdy) ve sap (py=pan_y0+pdy) ayni miktarda
-        # oynadigi icin kavrama hicbir frame'de kopmaz.
-        draw_hand(c, PAN_X, py)
         # buhar YUMURTADAN ONCE: havadaki yumurtanin ustune denk gelen serit onde
         # kalirsa yumurtaya bulasmis bir leke gibi okunuyor.
         for (sx, ph, wob) in steam:
