@@ -21,12 +21,14 @@
 #include <TFT_eSPI.h>
 #include "config.h"
 #include "ui_toggle.h"   // sag-ust gorunum degistirici (pill toggle, kapali durum)
+#include "spinner_fx.h"  // Claude yildizi + akan 3 nokta (spinner satiri animasyonu)
 
 class Hud {
 public:
   void begin(TFT_eSPI *tft) {
     _tft = tft;
     _bg  = tft->color565(BG_R, BG_G, BG_B);
+    _fx.begin(tft, _bg);
     _wifiDirty = _statusDirty = _actionDirty = _resetDirty = _btnDirty = true;
   }
 
@@ -60,8 +62,16 @@ public:
   }
 
   // Spinner/dusunme flavor metni (1. satir). Bos -> temizlenir. Renk clawd-turuncu.
-  void setAction(const char *txt) {
-    strlcpy(_action, txt ? txt : "", sizeof(_action));
+  // spin=true (calisiyor/dusunuyor) -> metnin soluna nabiz atan Claude yildizi,
+  // sagina akan 3 nokta eklenir (CLI spinner'inin karsiligi). spin=false ->
+  // duz metin ("Shipping!", "Oops...") — kendi noktalama isaretleri zaten var.
+  // Ayni metin+durum tekrar gelirse yeniden cizmez (satir clearRect'lendigi icin
+  // aksi halde gorunur bir sicrama olurdu; animasyon zaten kesintisiz surer).
+  void setAction(const char *txt, bool spin = false) {
+    const char *t = txt ? txt : "";
+    if (!strcmp(_action, t) && spin == _spin) return;
+    strlcpy(_action, t, sizeof(_action));
+    _spin = spin;
     _actionDirty = true;
   }
 
@@ -86,6 +96,7 @@ public:
     if (_resetDirty)  { drawReset();  _resetDirty  = false; }
     if (_statusDirty) { drawStatus(); _statusDirty = false; }
     if (_btnDirty)    { drawBtn();    _btnDirty    = false; }   // en son: kayma anim. digerlerini bekletmesin
+    _fx.tick();   // spinner yildizi + noktalar: yalniz parlaklik kademesi degisince yazar
   }
 
 private:
@@ -141,14 +152,15 @@ private:
     return x + _tft->textWidth(buf, 2) + 8;
   }
 
-  // 1. satir: spinner/dusunme flavor metni (clawd-turuncu).
+  // 1. satir: spinner/dusunme flavor metni (clawd-turuncu). Yildiz + noktalar dahil
+  // tum yerlesim SpinnerFx'te; burada yalniz bandi temizleyip bir kez cizdiririz.
+  // (Genislik: yildiz 13 + bosluk 6 + en uzun gerund ~200 + noktalar 17 -> 260 yeter.)
   void drawAction() {
-    clearRect(0, SPIN_Y - 10, 210, 20);
+    _fx.stop();                              // eski satirin animasyonu yeni zemine yazmasin
+    clearRect(0, SPIN_Y - 10, 260, 20);
     if (!_action[0]) return;
-    _tft->setTextFont(2);
-    _tft->setTextDatum(ML_DATUM);
-    _tft->setTextColor(CLAWD_ORANGE, _bg);
-    _tft->drawString(_action, 6, SPIN_Y, 2);
+    _fx.set(_action, _spin);
+    _fx.draw(6, SPIN_Y, false);
   }
 
   // 2. satir: reset sayaclari, statusLine ile AYNI sonuk gri (ctx/5h/wk placeholder rengi) —
@@ -185,6 +197,8 @@ private:
   char     _model[12] = {0};
   int      _ctx = -1, _h5 = -1, _wk = -1;
   char     _action[32] = {0};
+  bool     _spin = false;          // metin spinner durumunda mi (yildiz + noktalar)
+  SpinnerFx _fx;
   char     _h5r[10] = {0}, _wkr[10] = {0};
   bool     _connected  = false;
   int      _bars       = 1;

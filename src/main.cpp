@@ -184,29 +184,28 @@ static const char *OOPS[]  = { "Oops...", "Yikes...", "Uh-oh...", "Welp...",
 
 static const char *pick(const char *const *pool, int n) { return pool[esp_random() % n]; }
 
-// Spinner kelimeleri "...'siz" gelir (CC gerund'lari: "Cogitating"). HUD'da spinner
-// hissi icin sonuna "..." ekleyip statik tampona yaz (setAction kopyalar).
-static const char *pickSpin() {
-  static char buf[40];
-  snprintf(buf, sizeof(buf), "%s...", pick(g_spin, g_spinN));
-  return buf;
-}
-
 // Kategoriyi HUD'a yansit. Kategori degismediyse dokunma (kelime sabit kalir).
 // Usage ekraninin alt spinner satiri da AYNI kelimeyi gosterir (tek kaynak).
+//
+// WORK/THINK = "spinner" durumu: kelime CC gerund havuzundan CIPLAK gelir
+// ("Cogitating") ve setAction'a spin=true verilir -> cihaz solda nabiz atan Claude
+// yildizini, sagda akan 3 noktayi kendisi cizer (bkz. spinner_fx.h). Bu yuzden
+// metne artik "..." EKLENMEZ; noktalar animasyonun parcasi. HAPPY/OOPS ise statik
+// flavor (kendi noktalamasi var) -> spin=false.
 static void setHudCat(HudCat cat) {
   if ((int)cat == g_hudCat) return;
   g_hudCat = cat;
   const char *txt = "";
+  bool spin = false;
   switch (cat) {
-    case HC_WORK:  txt = pickSpin(); break;
-    case HC_THINK: txt = pickSpin(); break;
+    case HC_WORK:  txt = pick(g_spin, g_spinN); spin = true; break;
+    case HC_THINK: txt = pick(g_spin, g_spinN); spin = true; break;
     case HC_HAPPY: txt = pick(HAPPY, 6); break;
     case HC_OOPS:  txt = pick(OOPS,  6); break;
     case HC_IDLE:  txt = ""; break;
   }
-  hud.setAction(txt);
-  usage.setAction(txt);
+  hud.setAction(txt, spin);
+  usage.setAction(txt, spin);
 }
 
 // Olayi HUD ust satirina (spinner/flavor) yansit. (Tool adi satiri KALDIRILDI.)

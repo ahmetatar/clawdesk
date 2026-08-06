@@ -22,6 +22,7 @@
 #include <time.h>
 #include "config.h"
 #include "ui_toggle.h"          // sag-ust gorunum degistirici (pill toggle, acik durum)
+#include "spinner_fx.h"         // Claude yildizi + akan 3 nokta (alt spinner satiri)
 #include "anims/clawd_mini.h"
 #include "fonts/clock_font.h"   // saat: FSB24'ten cok az kucuk ozel font (make_clock_font.py)
 
@@ -30,6 +31,7 @@ public:
   void begin(TFT_eSPI *tft) {
     _tft = tft;
     _bg  = tft->color565(BG_R, BG_G, BG_B);
+    _fx.begin(tft, _bg);
   }
 
   // POST /status'tan yuzdeler + reset stringleri. Degismediyse dokunma (titreme yok).
@@ -39,11 +41,13 @@ public:
     if (wk != _wk || strcmp(_wkr, b)) { _wk = wk; strlcpy(_wkr, b, sizeof(_wkr)); _c2Dirty = true; }
   }
 
-  // Alt spinner kelimesi (HUD setAction ile ayni metin, "Mustering..." bicimli).
-  void setAction(const char *txt) {
+  // Alt spinner kelimesi (HUD setAction ile ayni metin/durum — tek kaynak).
+  // spin=true -> nabiz atan Claude yildizi + akan 3 nokta (bkz. spinner_fx.h).
+  void setAction(const char *txt, bool spin = false) {
     const char *t = txt ? txt : "";
-    if (!strcmp(_action, t)) return;
+    if (!strcmp(_action, t) && spin == _spin) return;
     strlcpy(_action, t, sizeof(_action));
+    _spin = spin;
     _actDirty = true;
   }
 
@@ -69,6 +73,7 @@ public:
     if (_c1Dirty)  { drawCard(CARD1_Y, "Current", _h5, _h5r); _c1Dirty = false; }
     if (_c2Dirty)  { drawCard(CARD2_Y, "Weekly",  _wk, _wkr); _c2Dirty = false; }
     if (_actDirty) { drawSpinner(); _actDirty = false; }
+    _fx.tick();   // yildiz + noktalar: yalniz parlaklik kademesi degisince yazar
   }
 
 private:
@@ -170,16 +175,14 @@ private:
     _tft->drawString(rbuf, BAR_X, y + 68, 2);
   }
 
-  // alt satir: "* Mustering..." (clawd-turuncu, ortali). Bos action -> satir bos.
+  // alt satir: HUD ile ayni spinner satiri (Claude yildizi + kelime + akan noktalar),
+  // burada ORTALI. Bos action -> satir bos. Cizim/animasyon disiplini: spinner_fx.h.
   void drawSpinner() {
-    _tft->fillRect(0, SPIN_Y - 9, 320, 19, _bg);
+    _fx.stop();
+    _tft->fillRect(0, SPIN_Y - 10, 320, 20, _bg);
     if (!_action[0]) return;
-    char buf[44];
-    snprintf(buf, sizeof(buf), "* %s", _action);
-    _tft->setTextFont(2);
-    _tft->setTextDatum(MC_DATUM);
-    _tft->setTextColor(CLAWD_ORANGE, _bg);
-    _tft->drawString(buf, 160, SPIN_Y, 2);
+    _fx.set(_action, _spin);
+    _fx.draw(160, SPIN_Y, true);
   }
 
   TFT_eSPI *_tft = nullptr;
@@ -187,6 +190,8 @@ private:
   int  _h5 = -1, _wk = -1;
   char _h5r[10] = {0}, _wkr[10] = {0};
   char _action[40] = {0};
+  bool _spin = false;              // metin spinner durumunda mi (yildiz + noktalar)
+  SpinnerFx _fx;
   int  _hh = -1, _mm = -1;
   uint32_t _lastClkPoll = 0;
   bool _full = true, _c1Dirty = false, _c2Dirty = false, _actDirty = false, _clkDirty = false;
