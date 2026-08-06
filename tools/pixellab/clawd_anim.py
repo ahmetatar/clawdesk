@@ -269,33 +269,85 @@ YOLK      = (250, 186, 52, 255)
 YOLK_HI   = (255, 226, 130, 255)
 STEAM     = (228, 234, 244, 255)   # sicak turuncu govde uzerinde de beyaz kalmali
 SIZZLE    = (255, 214, 140, 255)   # cizirti kivilcimi
+HAND_SH   = (170, 60, 40, 255)     # elin alt-sag golgesi (govde renginin koyusu)
+HAND_HI   = (232, 104, 74, 255)    # elin ust parlamasi
 
 PAN_W, PAN_H = 38, 13              # agiz elipsi
-PAN_X = 6                          # tava sol kenari (sap saga 12px tasar -> 56 < 64)
+PAN_X = 12                         # tava sol kenari (govde ekseniyle hizali: 12+19 = 31)
+PAN_UP = 6                         # tavayi clawd'a GORE yukari al -> sap kisalir (asagi bak)
 
-HANDLE_X0 = PAN_X + PAN_W - 5     # sapin basladigi x (tava agzinin sag kenari)
-HANDLE_L  = 16                    # sap uzunlugu -> uc 55'te biter (< 64)
+# --- sap: tava DONDURULDU, sap 45 derece YUKARI-SAGA ---
+# Neden: clawd'in sag kolu govdenin yaninda YATAY bir cubuk (sprite y7-14 -> canvas
+# y8-15) ve elin ucu (52, ~14). Duz yatay sap ise tavanin ortasinda, elin 16px
+# ASAGISINDA kaliyordu. Bir onceki denemede bu bosluk KOLU ASAGI INDIREREK
+# kapatilmisti; inen dikey kol bandi bacak hizasindan gectigi icin "eliyle tutuyor"
+# degil "ayagina takili" okunuyordu (bkz. af05bcc). Dogru cozum tersi: sapi ELE
+# CIKARMAK. Ustten bakista tavayi kendi ekseninde dondurmek agiz elipsini
+# DEGISTIRMEZ (daire hep ayni elips olarak izdusum verir), yalniz sapin yonu doner
+# -> gorsel olarak dogru, kolun/sprite'in tek pikseline dokunmadan.
+# Egim tam 1:1 (45 derece): eski egik sap 15px'de 4px kalkiyordu ve bu duzensiz
+# BASAMAK uretiyordu; 1:1 egim her sutunda tam 1px iner -> temiz, duzgun kosegen.
+#
+# SAP UZUNLUGU serbest bir sayi DEGIL: 45 derece sabitken sapin ucu elin oldugu
+# noktaya (53,13) dusmek zorunda, yani L = 22 - PAN_X ve pan_y0 = 10 + L. Sapi
+# kisaltmanin tek yolu tavayi clawd'a GORE yukari + saga almak (PAN_X 6->12,
+# PAN_UP 6) -> L 16'dan 10'a indi. Tava artik ayaklari ortuyor; sahne "tava yerde"
+# yerine "tava gogus hizasinda tutuluyor" okunuyor.
+HANDLE_DX = 32                    # sapin tavaya baglandigi nokta (agiz elipsinin sag-UST kavsi)
+HANDLE_DY = 2
+HANDLE_L  = 10                    # uc: py=20 iken (53,13) = sag kolun DIS ucu (x53) hizasi
+
+def _handle_tip(x, y):
+    """Sapin uc pikseli (elin kavradigi nokta) — draw_pan ve draw_hand ayni kaynaktan."""
+    return x + HANDLE_DX + HANDLE_L - 1, y + HANDLE_DY - (HANDLE_L - 1)
 
 def draw_pan(c, x, y):
-    """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + saga ahsap sap.
-    Sap DUMDUZ yataydir: 16px'de birkac piksel yukselen egim bu olcekte duzgun bir
-    cizgi degil BASAMAK uretiyor ve sap yamuk/kirik gorunuyor. Duz sapin tavaya
-    karismasini onleyen sey egim degil, ahsap rengi + ust parlama/alt golge cifti."""
+    """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + 45 derece
+    yukari-saga ahsap sap. Sap her sutunda 4 satir: ust-sol parlama + 2 govde +
+    alt-sag golge -> kosegen boyunca ~2.8px kalinlik (duz saptaki agirligin ayni)."""
     d = ImageDraw.Draw(c)
     d.ellipse([x, y + 3, x + PAN_W - 1, y + PAN_H - 1 + 3], fill=PAN_BODY)   # kalinlik
     d.ellipse([x, y, x + PAN_W - 1, y + PAN_H - 1], fill=PAN_RIM)            # agiz kenari
     d.ellipse([x + 2, y + 2, x + PAN_W - 3, y + PAN_H - 3], fill=PAN_IN)     # ic yuzey
     d.arc([x + 3, y + 3, x + PAN_W - 4, y + PAN_H - 3], 25, 155, fill=PAN_IN_HI)
-    ym = y + PAN_H // 2 - 1
-    hx0, hx1 = x + PAN_W - 5, x + PAN_W - 5 + HANDLE_L - 1
-    d.rectangle([hx0, ym, hx1, ym + 2], fill=HANDLE)
-    d.line([(hx0, ym), (hx1, ym)], fill=HANDLE_HI)          # ust kenar parlamasi
-    d.line([(hx0, ym + 3), (hx1, ym + 3)], fill=HANDLE_D)   # alt golge (kalinlik)
+    hx, hy = x + HANDLE_DX, y + HANDLE_DY
+    for k in range(HANDLE_L):
+        cx, cy = hx + k, hy - k
+        d.line([(cx, cy), (cx, cy + 2)], fill=HANDLE)
+        d.point((cx, cy), fill=HANDLE_HI)                   # ust-sol kenar parlamasi
+        d.point((cx, cy + 3), fill=HANDLE_D)                # alt-sag golge (kalinlik)
     # tavaya baglanan bilezik METAL (koyu ahsapla yapilirsa sapin dibinde kirli bir
-    # blok olarak okunuyor); sap ucunda acik tonlu topuz.
-    d.rectangle([hx0, ym - 1, hx0 + 1, ym + 3], fill=PAN_BODY)
-    d.line([(hx0, ym - 1), (hx0 + 1, ym - 1)], fill=PAN_RIM)
-    d.rectangle([hx1 - 1, ym, hx1, ym + 2], fill=HANDLE_HI)      # sap ucu (topuz)
+    # blok olarak okunuyor). Kosegende iki sutun genisliginde.
+    for k in range(2):
+        d.line([(hx + k, hy - k - 1), (hx + k, hy - k + 3)], fill=PAN_BODY)
+        d.point((hx + k, hy - k - 1), fill=PAN_RIM)
+
+def draw_hand(c, x, y):
+    """clawd'in sag ELI sapin ucunu kavrar. El, kolun UCUNDA (sprite'in kendi bandi)
+    durur ve sapin son pikselleri elin ALTINDAN girer -> "sapi tutuyor" okumasi.
+    KURAL: buradan asagi HICBIR kol/bag pikseli inmez (bkz. af05bcc); el yalnizca
+    kolun bittigi yerde 1-2px tasan bir yumruk. Renk clawd'in KENDI govde rengi;
+    koyu-gri bir eldiven tavanin parcasi gibi okunuyordu."""
+    p = c.load()
+    tx, ty = _handle_tip(x, y)
+    # El, sag kol bandinin DIS ucunda (x53 hizasi) sapin ucunu sarar. Tamamen
+    # clawd'in KENDI govde renginde: koyu bir DIS HAT (kapali halka) denendi ve
+    # eli koldan kopuk kirmizi bir yuzuk gibi gosteriyordu -> yalnizca alt-sag
+    # golge + ust parlama birakildi; el kolun dogal devami olarak okunuyor ve
+    # ahsap sap elin icinde biter (sap ucu acikta kalmaz).
+    #   . B B .          B = clawd'in kendi govde rengi (el)
+    #   B h B B          h = ust parlama (isik ust-solda)
+    #   B B B B          s = alt-sag golge (hacim)
+    #   B B B s
+    #   . s s .
+    FIST = ((0,-2,FACE),(1,-2,FACE),
+            (-1,-1,FACE),(0,-1,HAND_HI),(1,-1,FACE),(2,-1,FACE),
+            (-1, 0,FACE),(0, 0,FACE),(1, 0,FACE),(2, 0,FACE),
+            (-1, 1,FACE),(0, 1,FACE),(1, 1,FACE),(2, 1,HAND_SH),
+            (0, 2,HAND_SH),(1, 2,HAND_SH))
+    for (dx, dy, col) in FIST:
+        px_, py_ = tx + dx, ty + dy
+        if 0 <= px_ < CANVAS and 0 <= py_ < CANVAS: p[px_, py_] = col
 
 def draw_egg(c, cx, cy, flat=False):
     """Sahanda yumurta: ak (alt golgeli) + parlak sari. flat=True -> havada hafif ezik."""
@@ -307,13 +359,15 @@ def draw_egg(c, cx, cy, flat=False):
     d.ellipse([cx - 2, cy - 3, cx + 3, cy + 1], fill=YOLK)
     d.point((cx - 1, cy - 2), fill=YOLK_HI)
 
-def draw_steam(c, x, y, alpha, wob=0.0):
+def draw_steam(c, x, y, alpha, wob=0.0, H=6):
     """Yukari suzulen buhar SERIDI: 2px genis, sinuslu kivrilan, tepeye dogru sonen.
     Tek tek pikselden olusan kucuk glifler bu boyutta "s harfi" gibi okunuyordu —
-    surekli serit + dikey alpha rampasi buhar okumasini veren sey."""
+    surekli serit + dikey alpha rampasi buhar okumasini veren sey.
+    H (serit boyu) tava yukari alinirken 8'den 6'ya indi: toplam tirmanis
+    (H + omur*adim) aynen korunsaydi buhar GOZ hizasina cikip yuze cizik gibi
+    duruyordu; simdi eskisi gibi ~y9'da erir."""
     p = c.load()
     r, g, b, _ = STEAM
-    H = 8
     for k in range(H):
         dx = int(round(1.4 * math.sin(k * 0.85 + wob)))
         a = alpha * (H - k) // H                      # tepeye dogru erir
@@ -330,30 +384,32 @@ def anim_cooking(n=8):
     # Tava agzi clawd'in AYAKLARINI yarilar (klavyedeki gibi "arkasinda duruyor"
     # okumasi): daha asagida birakilirsa bacaklar tavayla govde arasinda bosta asili
     # kaliyor ve sahne "tava yere dusmus" gibi gorunuyor.
-    pan_y0 = CY + CH - 3 - HACK_UP - 2
+    pan_y0 = CY + CH - 3 - HACK_UP - 2 - PAN_UP
     pan_dy = (0, 1, -2, -1, 0, 1, 0, 0)          # savurma: dip -> yukari itis -> yakalama
     egg_dy = (0, 1, -3, -9, -6, 1, 0, 0)
-    # buhar: (x, faz, kivrim) — tava agzi boyunca dagitilmis uc serit
-    steam = ((13, 0, 0.0), (30, 3, 1.7), (48, 5, 3.2))
+    # buhar: (x, faz, kivrim) — agiz (x12..49) boyunca ucu, hepsi SAP bandinin
+    # (x44..53) solunda: sapi kesen serit ustune binmis leke gibi okunuyor.
+    steam = ((16, 0, 0.0), (27, 3, 1.7), (38, 5, 3.2))
     life = 5
     for i in range(n):
         pdy = pan_dy[i % 8]
         air = i % 8 in (2, 3, 4)                 # yumurta havada
         cl = clawd_variant(eye_dy=-1 if air else 0,
                            larm_dy=(0, 0, -1, -1, 0, 0, 0, 0)[i % 8],
-                           rarm_dy=max(-1, min(1, pdy)))    # sag kol sapla birlikte
+                           rarm_dy=pdy)                     # sag kol tavayla TAM ayni fazda
         c = base_canvas()
         place(c, cl, dy=-HACK_UP)
         py = pan_y0 + pdy
         draw_pan(c, PAN_X, py)
-        # on kol: sag kolun ALT kenarindan (sprite y14 -> canvas) sapa iner. Kol ve
-        # tava ayni yonde hareket ettigi icin (rarm_dy = pdy) kavrama hic kopmaz.
+        # el sapin ucunda: kol (rarm_dy=pdy) ve sap (py=pan_y0+pdy) ayni miktarda
+        # oynadigi icin kavrama hicbir frame'de kopmaz.
+        draw_hand(c, PAN_X, py)
         # buhar YUMURTADAN ONCE: havadaki yumurtanin ustune denk gelen serit onde
         # kalirsa yumurtaya bulasmis bir leke gibi okunuyor.
         for (sx, ph, wob) in steam:
             age = (i - ph) % n
             if age >= life: continue
-            draw_steam(c, sx, py - 1 - age * 2, 230 - int(170 * age / life), wob + age * 0.5)
+            draw_steam(c, sx, py - 1 - age, 230 - int(170 * age / life), wob + age * 0.5)
         ecx = PAN_X + PAN_W // 2 + 1                 # akin sol lobu tasiyor -> hafif saga
         draw_egg(c, ecx, py + PAN_H // 2 + egg_dy[i % 8], flat=air)
         if not air:                              # tavadayken cizirdar
