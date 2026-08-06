@@ -300,7 +300,10 @@ COOK_DOWN = 11
 # yerine "tava gogus hizasinda tutuluyor" okunuyor.
 HANDLE_DX = 32                    # sapin tavaya baglandigi nokta (agiz elipsinin sag-UST kavsi)
 HANDLE_DY = 2
-HANDLE_L  = 10                    # uc: py=20 iken (53,13) = sag kolun DIS ucu (x53) hizasi
+# Sap kolun DIS ucunda (x53) BITMEZ, 3px TASAR (uc x56'ya kadar gider): tam hizada
+# bitince sap "kola degmis" gibi duruyor, elin arkasindan cikan bir uc olmadigi icin
+# kavrama okunmuyordu. Gercek bir tavada sapin ucu elin obur tarafindan gorunur.
+HANDLE_L  = 13                    # uc: sag kolun DIS ucunu (x53) 3px asar
 
 def draw_pan(c, x, y):
     """Ustten bakisli tava: govde kalinligi + parlak agiz + koyu ic + 45 derece
