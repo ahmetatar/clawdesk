@@ -317,6 +317,14 @@ def draw_pan(c, x, y):
     hx, hy = x + HANDLE_DX, y + HANDLE_DY
     for k in range(HANDLE_L):
         cx, cy = hx + k, hy - k
+        # Sapin UCU (son sutun) YUVARLATILIR: tam sutun cizilirse uc testereyle
+        # KESILMIS gibi duz bir kenar veriyor. Son sutunda ust parlama ve alt golge
+        # piksellerini birakip yalniz 2 govde pikseli koyuyoruz; kosegen boyunca
+        # bakildiginda uc kose kirilarak yuvarlak bir baslik olarak okunuyor.
+        if k == HANDLE_L - 1:
+            d.point((cx, cy + 1), fill=HANDLE_HI)           # ucun ust kavsinda isik
+            d.point((cx, cy + 2), fill=HANDLE)
+            continue
         d.line([(cx, cy), (cx, cy + 2)], fill=HANDLE)
         d.point((cx, cy), fill=HANDLE_HI)                   # ust-sol kenar parlamasi
         d.point((cx, cy + 3), fill=HANDLE_D)                # alt-sag golge (kalinlik)
