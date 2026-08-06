@@ -8,8 +8,10 @@ Fiziksel Claude Code maskotu. **CYD** (ESP32-2432S028R "Cheap Yellow Display")
 
 ## Özellikler
 
-- **5 ifade animasyonu** (idle / hacking / happy / think / oops), 64×64 RGB565,
-  landscape ekrana 3× ölçekli, her biri kendi fps'inde. (`src/anims/`)
+- **14 ifade animasyonu** + gezinen mini maskot, 64×64 RGB565, landscape ekrana
+  3× ölçekli, her biri kendi fps'inde. (`src/anims/`) Hepsini oynar halde görmek
+  için **[maskot vitrini](docs/showcase.html)** — tarayıcıda aç; `python3
+  tools/build_showcase.py` ile `src/anims/*.h`'den yeniden üretilir.
 - **Olay protokolü** — `POST /e` (fire-and-forget, 204). Olay → animasyon eşlemesi
   (`tool.pre`→hacking, `git`→happy, `think`→think, `tool.post ok=false`→oops …).
   `GET /health` canlılık. mDNS `clawd.local` cihazda çalışır ama yalnız keşif/yedek
