@@ -47,37 +47,25 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_love,    CLAWD_LOVE_FRAMES,    110, true,  true,  false, "love"    },  // OKSAMA (surtme): > < + yukselen kalpler
   { clawd_brain_full, CLAWD_BRAIN_FULL_FRAMES, 180, false, false, true, "brain_full" },  // context kritik: beyin bardak gibi dolup bosalir
   { clawd_compact, CLAWD_COMPACT_FRAMES,  150, false, false, true,  "compact" },  // PreCompact: beyin + minik yanip sonen yildizlar
-  { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // DINLENME havuzu #2: kulaklikla muzik
+  { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // kulaklikla muzik — su an HICBIR olay tetiklemiyor (bkz. isIdlePose notu)
   { clawd_cooking, CLAWD_COOKING_FRAMES,      111, false, true,  false, "cooking" },  // UZAYAN is: klavye WORK_LONG_MS'i asinca tavaya gecer (LED yesil, hacking gibi)
 };
 
-// ---- dinlenme (idle) havuzu ----
-// "Sakin bekleme" pozu tek maskot degil: her dinlenmeye DONUSTE havuzdan AGIRLIKLI
-// rastgele biri secilir (main.cpp restAnim/pickIdle). Gercek reaksiyon pozlari
-// (hacking/happy/oops/ask/agents) bu havuzun DISINDA — onlar hic degismez.
-// Sade idle VARSAYILANDIR; ozel pozlar (muzik vb.) nadir surpriz olsun diye dusuk
-// agirlik alir — uniform cekilis 2 uyeli havuzda %50 yapiyordu, ekranda fazlaydi.
-// Yeni maskot eklerken: agirligi 10-15 civari tut, ANIM_IDLE'i buyuk birak.
-// PosePick: agirlikli maskot havuzu uyesi (hem dinlenme hem "calisiyor" havuzu ayni
-// yapiyi kullanir; cekilis + uyelik testi tek yerde -> poolTotal/inPool).
-struct PosePick { AnimId id; uint8_t weight; };
-static inline uint16_t poolTotal(const PosePick *p, uint8_t n) {
-  uint16_t t = 0;
-  for (uint8_t i = 0; i < n; i++) t += p[i].weight;
-  return t;
-}
-static inline bool inPool(const PosePick *p, uint8_t n, AnimId id) {
-  for (uint8_t i = 0; i < n; i++) if (p[i].id == id) return true;
-  return false;
-}
-
-static const PosePick IDLE_POOL[] = {
-  { ANIM_IDLE,       85 },   // sade bekleme (varsayilan)
-  { ANIM_IDLE_MUSIC, 15 },   // kulaklikla muzik (nadir)
-};
-static const uint8_t IDLE_POOL_N = sizeof(IDLE_POOL) / sizeof(IDLE_POOL[0]);
-static inline uint16_t idlePoolTotal() { return poolTotal(IDLE_POOL, IDLE_POOL_N); }
-static inline bool isIdlePose(AnimId id) { return inPool(IDLE_POOL, IDLE_POOL_N, id); }
+// ---- dinlenme (idle) pozlari ----
+// Maskot secimi ARTIK RASTGELE DEGIL: cihazdaki her poz bir seyi anlatir, hicbiri
+// dekor degil (bkz. hacking -> cooking yukseltmesi). Bu yuzden agirlikli idle havuzu
+// (IDLE_POOL/pickIdle) kaldirildi; "dinlenme" = sade ANIM_IDLE.
+//
+// ANIM_IDLE_MUSIC (kulaklikla muzik) KAYITTA DURUYOR ama su an HICBIR olay onu
+// tetiklemiyor — hangi duruma baglanacagi henuz kararlastirilmadi (en guclu aday:
+// session.stop = "tur bitti, sira sende"). Bagladigimizda tek yapilacak sey
+// mapEvent'te ilgili satiri ANIM_IDLE_MUSIC'e cevirmek.
+//
+// isIdlePose muzigi de KAPSAR: uc yerde kullaniliyor (dokunmatik tickle/love sonrasi
+// donus, brain_full takasi, HUD kategorisi). Muzik "dinlenme pozu" sayilmazsa,
+// gosterildigi gun clawd'i oksadiginda muzige degil sade idle'a doner — sessizce
+// bozulan cinsten bir hata. Simdiden dogru tanimla dursun.
+static inline bool isIdlePose(AnimId id) { return id == ANIM_IDLE || id == ANIM_IDLE_MUSIC; }
 
 // ---- "calisiyor" pozlari: klavye -> (uzarsa) tava ----
 // Calisma pozu RASTGELE SECILMEZ. tool.pre her zaman klavyeyle baslar; is idle'a
