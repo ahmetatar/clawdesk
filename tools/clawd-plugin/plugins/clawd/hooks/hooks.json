@@ -24,6 +24,9 @@
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
     ]
   }
 }

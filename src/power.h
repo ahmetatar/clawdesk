@@ -32,8 +32,13 @@ public:
   void notifyActivity() { _lastActivity = millis(); }
 
   // Claude mesgul mu? true iken uyku/kisma kapali (Stop gelene kadar).
-  // main.cpp her olayda cagirir: session.stop -> false, aksi halde true.
-  void setBusy(bool b) { _busy = b; }
+  // main.cpp her olayda cagirir (siniflandirma orada: bitiren olaylar -> false).
+  // _busySince = busy'nin BASLADIGI an; emniyet tavani buradan olculur (son olaydan
+  // DEGIL) -> seyrek de olsa surekli damlayan olaylar tavani sonsuza uzatamaz.
+  void setBusy(bool b) {
+    if (b && !_busy) _busySince = millis();
+    _busy = b;
+  }
 
   State state() const { return _state; }
   bool  asleep() const { return _state == SLEEP; }
@@ -47,7 +52,10 @@ public:
     // Claude mesgulken uyanik tut: emniyet tavanina kadar hep ACTIVE (kisma/uyku
     // yok). Stop gelince (_busy=false) idle sayaci son olaydan baslar -> normal
     // kis/uyku. Tavan asilirsa (Stop kayip) normal idle'a dus.
-    bool hold = _busy && (idle < T_BUSY_MAX_MS);
+    // TAVAN busy'nin BASINDAN olculur: eskiden son olaydan olculuyordu ve her yeni
+    // olay tavani bastan baslatiyordu -> 10 dk'dan sik damlayan bir olay akisi (ikinci
+    // bir oturum, arka plan isi, /loop) cihazi SURESIZ uyanik birakiyordu.
+    bool hold = _busy && (now - _busySince < T_BUSY_MAX_MS);
 
     State next = hold                 ? ACTIVE
                : (idle >= T_SLEEP_MS) ? SLEEP
@@ -70,6 +78,7 @@ public:
 private:
   State    _state       = ACTIVE;
   bool     _busy         = false;    // Claude calisiyor mu (Stop'a kadar)
+  uint32_t _busySince    = 0;        // _busy false->true kenari (emniyet tavaninin sifir noktasi)
   uint32_t _lastActivity = 0;
   uint32_t _lastRamp     = 0;
   uint16_t _cur          = BL_FULL;   // 0..255, ara degerler icin 16-bit

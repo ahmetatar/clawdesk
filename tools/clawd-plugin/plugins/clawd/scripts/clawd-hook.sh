@@ -118,6 +118,10 @@ case "$ev" in
   PreCompact)    body='{"k":"compact"}' ;;
   SessionStart)  body='{"k":"session.start"}' ;;
   Stop)          body='{"k":"session.stop"}' ;;
+  # Terminal closed / session ended: Stop does NOT always fire (e.g. the window is closed
+  # while a turn is still running). Without it the device's "Claude is busy" flag would
+  # stay set and the screen would not dim/sleep. SessionEnd is the reliable release.
+  SessionEnd)    body='{"k":"session.stop"}' ;;
 
   *) exit 0 ;;
 esac

@@ -566,11 +566,6 @@ void loop() {
   Ev e;
   while (xQueueReceive(evq, &e, 0) == pdTRUE) {
     power.notifyActivity();
-    // Claude mesgul mu? session.start ve session.stop = calisma YOK -> busy kapali.
-    // session.start'i busy sayarsak, olaysiz acilan / (/clear'lanan) oturumda cihaz
-    // 10 dk uyanik kalir ve 30s dim / 120s uyku baypas olur. Gercek "mesgul" ancak
-    // prompt/tool/think ile baslar, session.stop ile biter.
-    power.setBusy(strcmp(e.k, "session.start") != 0 && strcmp(e.k, "session.stop") != 0);
 
     bool spawn  = !strcmp(e.k, "agent.spawn");
     bool done   = !strcmp(e.k, "agent.done");
@@ -583,6 +578,17 @@ void loop() {
     else if (done)   { if (agentActive > 0) agentActive--; if (agentActive == 0) minis.clear(); }
     else if (sbound) { agentActive = 0; minis.clear(); }
     agentMode = (agentActive > 0);
+
+    // Claude mesgul mu? BITIREN olaylar busy'yi kapatir, geri kalan her sey acar.
+    //  - session.start / session.stop: calisma yok (start'i busy saysaydik, olaysiz
+    //    acilan / (/clear'lanan) oturumda cihaz 10 dk uyanik kalirdi).
+    //  - agent.done (sayac 0): son alt-agent bitti. ARKA PLAN agent'i ana turun
+    //    Stop'undan SONRA bittiginde ardindan session.stop GELMEZ; eskiden bu olay
+    //    busy'yi tekrar aciyordu ve cihaz tam parlaklikta 10 dk takiliyordu.
+    // Diger olaylar (tool.pre/git/tool.post/compact/prompt.submit/think/agent.spawn)
+    // eskisi gibi busy = true -> uzun tool'lar sirasinda ekran sonmez (degismedi).
+    bool workDone = sbound || (done && agentActive == 0);
+    power.setBusy(!workDone);
 
     // Buyuk poz: agent modu boyunca ANIM_AGENTS'te KILITLI (tool.pre/hacking vb.
     // mini'lerin ustune binmesin). Ilk spawn -> agents; son done -> idle; diger
