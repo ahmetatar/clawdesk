@@ -24,28 +24,26 @@
 #include <string.h>
 #include "config.h"
 
-// Claude yildizi, 13x13 (elle cizilmis): tam boy dikey+yatay isin, koselere dogru
-// kisalan 4 capraz isin, merkezde kalinlasan govde.
-static const char *const CLAUDE_MARK[13] = {
-  "......#......",
-  "......#......",
-  "..#...#...#..",
-  "...#..#..#...",
-  "....#.#.#....",
-  ".....###.....",
-  "#############",
-  ".....###.....",
-  "....#.#.#....",
-  "...#..#..#...",
-  "..#...#...#..",
-  "......#......",
-  "......#......",
+// Claude yildizi, 9x9 (elle cizilmis): tam boy dikey+yatay isin + 4 capraz isin.
+// Boyut, yanindaki Font2 metninin govde yuksekligiyle (~11px) uyumlu kalsin diye
+// kucuk tutuldu — daha buyugu satirda "ikon" degil "amblem" gibi duruyordu.
+static const int MARK_N = 9;
+static const char *const CLAUDE_MARK[MARK_N] = {
+  "....#....",
+  "....#....",
+  ".#..#..#.",
+  "..#.#.#..",
+  "#########",
+  "..#.#.#..",
+  ".#..#..#.",
+  "....#....",
+  "....#....",
 };
 
 class SpinnerFx {
 public:
-  static constexpr int ICON_W   = 13;   // yildiz genisligi/yuksekligi
-  static constexpr int ICON_GAP = 6;    // yildiz ile kelime arasi
+  static constexpr int ICON_W   = MARK_N;   // yildiz genisligi/yuksekligi
+  static constexpr int ICON_GAP = 6;        // yildiz ile kelime arasi
   static constexpr int DOT_GAP  = 5;    // kelime ile ilk nokta arasi
   static constexpr int DOT_STEP = 5;    // noktalar arasi mesafe
   static constexpr int DOT_SZ   = 2;    // nokta kenari (px)
@@ -139,13 +137,13 @@ private:
   // Yildizin YALNIZ dolu piksellerini yeniden boyar (bos pikseller hic dokunulmaz
   // -> zemin silinmez -> titreme yok). Ardisik pikseller tek HLine'a toplanir.
   void drawIcon(uint16_t col) {
-    for (int y = 0; y < 13; y++) {
+    for (int y = 0; y < MARK_N; y++) {
       const char *row = CLAUDE_MARK[y];
       int x = 0;
-      while (x < 13) {
+      while (x < MARK_N) {
         if (row[x] != '#') { x++; continue; }
         int run = 0;
-        while (x + run < 13 && row[x + run] == '#') run++;
+        while (x + run < MARK_N && row[x + run] == '#') run++;
         _tft->drawFastHLine(_iconX + x, _iconY + y, run, col);
         x += run;
       }
