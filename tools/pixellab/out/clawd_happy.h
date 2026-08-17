@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_happy': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_happy': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_HAPPY_W 64
 #define CLAWD_HAPPY_H 64

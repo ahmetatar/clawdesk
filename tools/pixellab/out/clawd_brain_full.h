@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_brain_full': 16 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_brain_full': 16 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_BRAIN_FULL_W 64
 #define CLAWD_BRAIN_FULL_H 64

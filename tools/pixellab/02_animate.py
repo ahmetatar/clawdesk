@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# clawd_base.png'i referans alip bir animasyon uret (animate-with-text-v2).
-# Job arka planda calisir; poll edip frame'leri out/anim_<ad>/frame_*.png olarak kaydeder.
+# Generate one animation from clawd_base.png (animate-with-text-v2). The job runs
+# in the background; frames are polled and saved to out/anim_<name>/frame_*.png.
 #
-#   source tools/pixellab/secrets.sh && python3 tools/pixellab/02_animate.py <ad> "<aksiyon>" [SIZE]
-# ornek: python3 tools/pixellab/02_animate.py idle "idle breathing, gentle bob" 64
+#   source tools/pixellab/secrets.sh && python3 tools/pixellab/02_animate.py <name> "<action>" [SIZE]
+# example: python3 tools/pixellab/02_animate.py idle "idle breathing, gentle bob" 64
 import sys, os, lib
 from PIL import Image
 
@@ -13,7 +13,7 @@ size   = int(sys.argv[3]) if len(sys.argv) > 3 else 64
 
 base = "out/clawd_base.png"
 if not os.path.exists(base):
-    raise SystemExit("once 01_clawd_base.py calistir (out/clawd_base.png yok)")
+    raise SystemExit("run 01_clawd_base.py first (out/clawd_base.png is missing)")
 w, h = Image.open(base).size
 
 print(f"animate '{name}': {action}  ({w}x{h})")
@@ -27,7 +27,7 @@ res = lib.post("/animate-with-text-v2", {
 
 job = res.get("background_job_id")
 done = lib.poll_job(job) if job else res
-# frame'ler last_response.images altinda
+# frames arrive under last_response.images
 imgs = (done.get("last_response") or {}).get("images") or done.get("images") or []
 
 outdir = f"out/anim_{name}"
@@ -36,4 +36,4 @@ for i, im in enumerate(imgs):
     lib.save_image_field(im, f"{outdir}/frame_{i:02d}.png")
 print(f"{len(imgs)} frame -> {outdir}")
 u = (done.get("usage") or {})
-print("kullanim:", u.get("generations"), "generation")
+print("usage:", u.get("generations"), "generations")

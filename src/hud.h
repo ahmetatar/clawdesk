@@ -1,27 +1,22 @@
 #pragma once
-// clawd HUD — clawd'in ALTINDAKI bosluga UC satir yazan hafif katman.
-// clawd merkezde cizilir; anim'ler 51 satira KIRPILIR (ekran y[24,177)) -> alt
-// serit y[177,240) HUD'a kalir, ust katmanla cakismaz (titreme yok).
+// clawd HUD — a light layer that writes three lines in the band below clawd.
+// Animations are clipped to y[24,177), leaving y[177,240) to the HUD.
 //
-// YERLESIM:
-//   sol-ust    (y[0,24)): WiFi SINYAL CUBUKLARI (RSSI'den; bagli=yesil, kopuk=kirmizi).
-//   sol-alt 1. satir (y~188): SPINNER/dusunme flavor metni ("Thinking...", "Crafting..."),
-//                     clawd-turuncu.
-//   sol-alt 2. satir (y~208): RESET SAYACLARI — "5h: (2h32m)   wk: (2d5h)", sonuk GRI
-//                     (statusLine'in ayni renkli parantez-ici sureleri; kullanima gore
-//                     RENKLENMEZ, sadece bilgi).
-//   sol-alt 3. satir (y~228): CLAUDE CODE STATUS LINE ozeti — "Model  ctx:%  5h:%  wk:%",
-//                     yuzdeler kullanima gore RENKLI (yesil<50, sari<80, kirmizi>=80).
-//   (Onceki sag-alt "tool adi" KALDIRILDI — cok satirlik alt bloga yer acmak icin.)
+// Layout:
+//   top-left  (y[0,24)): WiFi signal bars from RSSI (connected green, lost red).
+//   line 1 (y~188): spinner / flavor text ("Thinking...", "Crafting..."), orange.
+//   line 2 (y~208): reset countdowns — "5h: (2h32m)   wk: (2d5h)", dim grey.
+//   line 3 (y~228): status line summary — "Model  ctx:%  5h:%  wk:%", with the
+//                   percentages colored by usage (green<50, yellow<80, red>=80).
 //
-// Veri: statusLine -> POST /status (model+ctx+5h+wk+h5r+wkr); flavor -> setAction (olaylardan).
-// CIZIM DISIPLINI: yalniz ilgili satir DEGISINCE yeniden cizilir (once bg temizle).
+// Data: statusLine -> POST /status; flavor text -> setAction (from events).
+// Drawing discipline: a line is redrawn only when it changes.
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "config.h"
-#include "ui_toggle.h"   // sag-ust gorunum degistirici (pill toggle, kapali durum)
-#include "spinner_fx.h"  // Claude yildizi + akan 3 nokta (spinner satiri animasyonu)
+#include "ui_toggle.h"
+#include "spinner_fx.h"
 
 class Hud {
 public:
@@ -32,41 +27,36 @@ public:
     _wifiDirty = _statusDirty = _actionDirty = _resetDirty = _btnDirty = true;
   }
 
-  // rssi: WiFi.RSSI() (dBm, negatif). connected=false -> tek kirmizi cubuk.
-  // Periyodik cagrilir; yalniz cubuk sayisi/durum DEGISINCE yeniden cizer.
+  // rssi: WiFi.RSSI() in dBm. connected=false -> a single red bar.
+  // Called periodically; redraws only when the bar count or state changes.
   void setWifi(bool connected, int rssi) {
     int bars = !connected     ? 1
              : rssi >= -60     ? 4
              : rssi >= -68     ? 3
              : rssi >= -76     ? 2
                                : 1;
-    if (connected == _connected && bars == _bars) return;   // degisiklik yok
+    if (connected == _connected && bars == _bars) return;
     _connected = connected;
     _bars = bars;
     _wifiDirty = true;
   }
 
-  // Claude Code status line ozeti (alt satir). model bos -> "Claude" varsayilani.
-  // ctx/h5/wk: yuzde (0..100); <0 -> "etiket -" sonuk placeholder (veri bekleniyor).
+  // Status line summary (bottom row). Empty model -> "Claude".
+  // ctx/h5/wk are percentages; <0 draws a dim "label -" placeholder.
   void setStatus(const char *model, int ctx, int h5, int wk) {
     const char *m = model ? model : "";
-    // Cihaz-tarafi dedup: deger GERCEKTEN degismediyse yeniden cizme (drawStatus bandi
-    // clearRect'ler -> aksi halde ayni degerin her tekrarinda gorunur bir "blink" olurdu).
-    // Reset sonrasi cihazda placeholder (_model="", _ctx=-1) durur; host son degeri
-    // yeniden yollayinca FARKLI olur -> bir kez cizilir (deger geri gelir). markAllDirty()
-    // (uykudan uyanma/ilk acilis) bu kontrolu baypas eder -> o yollarda cizim garanti.
+    // Dedup on the device: drawStatus clears its band, so redrawing an unchanged
+    // value would show as a visible blink. markAllDirty() bypasses this, so a
+    // wake-up or first boot always draws.
     if (ctx == _ctx && h5 == _h5 && wk == _wk && !strcmp(_model, m)) return;
     strlcpy(_model, m, sizeof(_model));
     _ctx = ctx; _h5 = h5; _wk = wk;
     _statusDirty = true;
   }
 
-  // Spinner/dusunme flavor metni (1. satir). Bos -> temizlenir. Renk clawd-turuncu.
-  // spin=true (calisiyor/dusunuyor) -> metnin soluna nabiz atan Claude yildizi,
-  // sagina akan 3 nokta eklenir (CLI spinner'inin karsiligi). spin=false ->
-  // duz metin ("Shipping!", "Oops...") — kendi noktalama isaretleri zaten var.
-  // Ayni metin+durum tekrar gelirse yeniden cizmez (satir clearRect'lendigi icin
-  // aksi halde gorunur bir sicrama olurdu; animasyon zaten kesintisiz surer).
+  // Spinner / flavor text (line 1), in clawd-orange; empty clears it.
+  // spin=true adds the pulsing mark and travelling dots; spin=false draws plain
+  // text ("Shipping!", "Oops..."). Repeating the same text is a no-op.
   void setAction(const char *txt, bool spin = false) {
     const char *t = txt ? txt : "";
     if (!strcmp(_action, t) && spin == _spin) return;
@@ -75,12 +65,11 @@ public:
     _actionDirty = true;
   }
 
-  // Reset sayaclari (2. satir, GRI): "5h: (2h32m)  wk: (2d5h)". h5r/wkr bos -> "-"
-  // placeholder (statusLine henuz resets_at gondermedi). Host zaten bicimlendirilmis
-  // (time_until tarzi "2h32m"/"3d4h") string yollar; cihaz yalniz cizer.
+  // Reset countdowns (line 2, grey): "5h: (2h32m)  wk: (2d5h)". The host sends
+  // pre-formatted strings; empty ones fall back to "-".
   void setReset(const char *h5r, const char *wkr) {
     const char *a = h5r ? h5r : "", *b = wkr ? wkr : "";
-    if (!strcmp(_h5r, a) && !strcmp(_wkr, b)) return;   // ayni deger -> titreme yok
+    if (!strcmp(_h5r, a) && !strcmp(_wkr, b)) return;
     strlcpy(_h5r, a, sizeof(_h5r));
     strlcpy(_wkr, b, sizeof(_wkr));
     _resetDirty = true;
@@ -88,25 +77,25 @@ public:
 
   void markAllDirty() { _wifiDirty = _statusDirty = _actionDirty = _resetDirty = _btnDirty = true; }
 
-  // Her loop cagrilir; yalniz kirli satirlari cizer. Uyku sirasinda main CAGIRMAZ.
+  // Called every loop; draws only dirty lines. Not called while asleep.
   void render() {
     if (!_tft) return;
     if (_wifiDirty)   { drawWifi();   _wifiDirty   = false; }
     if (_actionDirty) { drawAction(); _actionDirty = false; }
     if (_resetDirty)  { drawReset();  _resetDirty  = false; }
     if (_statusDirty) { drawStatus(); _statusDirty = false; }
-    if (_btnDirty)    { drawBtn();    _btnDirty    = false; }   // en son: kayma anim. digerlerini bekletmesin
-    _fx.tick();   // spinner yildizi + noktalar: yalniz parlaklik kademesi degisince yazar
+    if (_btnDirty)    { drawBtn();    _btnDirty    = false; }   // last: its slide must not delay the rest
+    _fx.tick();
   }
 
 private:
-  static constexpr int SPIN_Y   = 188;    // 1. satir (spinner/flavor) dikey orta
-  static constexpr int RESET_Y  = 208;    // 2. satir (reset sayaclari, gri) dikey orta
-  static constexpr int STATUS_Y = 228;    // 3. satir (status line) dikey orta
+  static constexpr int SPIN_Y   = 188;    // line 1 (spinner/flavor), vertical centre
+  static constexpr int RESET_Y  = 208;    // line 2 (reset countdowns)
+  static constexpr int STATUS_Y = 228;    // line 3 (status line)
 
   void clearRect(int x, int y, int w, int h) { _tft->fillRect(x, y, w, h, _bg); }
 
-  // Sol-ust: 4 sinyal cubugu. Dolu cubuklar = _bars; bagli yesil, kopuk kirmizi.
+  // Top-left: 4 signal bars, _bars of them filled.
   void drawWifi() {
     clearRect(0, 0, 40, 24);
     const int x0 = 5, base = 19, bw = 3, gap = 2;
@@ -120,29 +109,27 @@ private:
     }
   }
 
-  // Sag-ust: gorunum degistirici toggle — burasi normal gorunum, yani KAPALI
-  // durum (topuz solda, yatak gri). Usage ekraninda ayni toggle acik cizilir.
-  // Dokunma bolgesi (UI_BTN_W/H) bundan cok daha genis; toggle yalniz gorsel.
+  // Top-right: the view toggle in its OFF state (this is the mascot view).
+  // The usage view draws the same toggle turned on.
   void drawBtn() { drawUiToggle(_tft, _bg, false); }
 
-  // Kullanima gore renk: <%50 yesil, <%80 sari, >=%80 kirmizi (statusLine ile ayni).
+  // Usage color: <50 green, <80 yellow, >=80 red (same as the statusLine).
   uint16_t pctColor(int p) {
     return p >= 80 ? _tft->color565(220, 70, 60)
          : p >= 50 ? _tft->color565(230, 195, 60)
                    : _tft->color565(70, 200, 110);
   }
 
-  // Tek "etiket %" segmenti ciz, yeni x dondur. pct<0 (veri yok) -> "etiket -"
-  // sonuk placeholder olarak yine ciz (bar bos kalmasin); gercek deger gelince
-  // renkli % ile dolar.
+  // Draw one "label %" segment and return the next x. pct<0 draws a dim
+  // placeholder so the row is never empty.
   int drawPct(int x, const char *label, int pct) {
     char buf[14];
     uint16_t col;
     if (pct < 0) {
-      snprintf(buf, sizeof(buf), "%s -", label);          // "ctx: -" (veri bekleniyor)
-      col = _tft->color565(120, 120, 132);                // sonuk gri placeholder
+      snprintf(buf, sizeof(buf), "%s -", label);          // "ctx: -" (awaiting data)
+      col = _tft->color565(120, 120, 132);
     } else {
-      snprintf(buf, sizeof(buf), "%s %d%%", label, pct);  // "ctx: 12%" (renkli)
+      snprintf(buf, sizeof(buf), "%s %d%%", label, pct);  // "ctx: 12%"
       col = pctColor(pct);
     }
     _tft->setTextFont(2);
@@ -152,19 +139,17 @@ private:
     return x + _tft->textWidth(buf, 2) + 8;
   }
 
-  // 1. satir: spinner/dusunme flavor metni (clawd-turuncu). Yildiz + noktalar dahil
-  // tum yerlesim SpinnerFx'te; burada yalniz bandi temizleyip bir kez cizdiririz.
-  // (Genislik: yildiz 13 + bosluk 6 + en uzun gerund ~200 + noktalar 17 -> 260 yeter.)
+  // Line 1: SpinnerFx owns the layout; here we just clear the band and draw once.
+  // 260 px covers mark + gap + the longest gerund + dots.
   void drawAction() {
-    _fx.stop();                              // eski satirin animasyonu yeni zemine yazmasin
+    _fx.stop();                              // stop the old line animating over the new background
     clearRect(0, SPIN_Y - 10, 260, 20);
     if (!_action[0]) return;
     _fx.set(_action, _spin);
     _fx.draw(6, SPIN_Y, false);
   }
 
-  // 2. satir: reset sayaclari, statusLine ile AYNI sonuk gri (ctx/5h/wk placeholder rengi) —
-  // kullanima gore RENKLENMEZ, sadece "ne zaman dolar" bilgisi. Ikisi de yoksa satir bos kalir.
+  // Line 2: reset countdowns in dim grey — informational, never colored by usage.
   void drawReset() {
     clearRect(0, RESET_Y - 10, 320, 20);
     if (!_h5r[0] && !_wkr[0]) return;
@@ -173,15 +158,15 @@ private:
              _h5r[0] ? _h5r : "-", _wkr[0] ? _wkr : "-");
     _tft->setTextFont(2);
     _tft->setTextDatum(ML_DATUM);
-    _tft->setTextColor(_tft->color565(120, 120, 132), _bg);   // sonuk gri
+    _tft->setTextColor(_tft->color565(120, 120, 132), _bg);
     _tft->drawString(buf, 6, RESET_Y, 2);
   }
 
-  // 3. satir: model (sonuk gri) + ctx/5h/wk (renkli). Soldan saga dizilir.
+  // Line 3: model (dim grey) followed by the colored ctx/5h/wk segments.
   void drawStatus() {
     clearRect(0, STATUS_Y - 11, 320, 23);
     int x = 6;
-    const char *model = _model[0] ? _model : "Claude";   // veri yok -> varsayilan
+    const char *model = _model[0] ? _model : "Claude";
     _tft->setTextFont(2);
     _tft->setTextDatum(ML_DATUM);
     _tft->setTextColor(_tft->color565(150, 150, 162), _bg);
@@ -197,7 +182,7 @@ private:
   char     _model[12] = {0};
   int      _ctx = -1, _h5 = -1, _wk = -1;
   char     _action[32] = {0};
-  bool     _spin = false;          // metin spinner durumunda mi (yildiz + noktalar)
+  bool     _spin = false;          // is the text in spinner mode (mark + dots)
   SpinnerFx _fx;
   char     _h5r[10] = {0}, _wkr[10] = {0};
   bool     _connected  = false;

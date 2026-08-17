@@ -1,90 +1,99 @@
-# clawd Cihaz Protokolü
+# clawd device protocol
 
-> Claude Code (PC) ↔ clawd cihazı (ESP32/CYD) arasındaki olay protokolü.
-> **Taşıma: HTTP webhook + mDNS (WiFi).** Tek versiyon, tek mimari.
+> The event protocol between Claude Code (PC) and the clawd device (ESP32/CYD).
+> **Transport: HTTP webhook + mDNS over WiFi.** One version, one architecture.
 
-## Tasarım ilkeleri
+## Design principles
 
-1. **Anlam taşı, animasyon değil.** PC "ne olduğunu" bildirir; hangi animasyon/ses/LED'in oynayacağına **cihaz** karar verir. Firmware ile PC bağımsız evrilir.
-2. **Ağır iş PC'de.** Tool gruplama, git tespiti, süre/sentiment hesabı hook script'lerinde. ESP32 sadece `kind → state` eşler.
-3. **Daemon yok.** Claude Code hook'ları kısa ömürlüdür: tetiklenir, cihaza bir HTTP isteği atar, çıkar. Uzun süre çalışan bir köprü süreci gerekmez.
-
----
-
-## 1) Mimari
-
-```
-Claude Code hook (kısa ömürlü)  ──HTTP──►  ESP32 HTTP sunucusu (clawd.local)
-   curl / minik POST                       olayı render eder: anim + ses + LED
-                                           dokunmatik → izin cevabı
-```
-
-- ESP32 WiFi'ye bağlanır, üstünde **ESPAsyncWebServer** koşar.
-- **mDNS** ile kendini `clawd.local` olarak duyurur (`MDNS.begin("clawd")`) — IP hardcode edilmez.
-- İlk WiFi kurulumu **WiFiManager** captive portal ile bir kez yapılır.
-- Her hook olayı cihazın bir ucuna POST'lar; HTTP body = envelope JSON'u.
+1. **Carry meaning, not animation.** The PC reports "what happened"; the **device**
+   decides which animation, sound or LED plays. The firmware and the PC evolve
+   independently.
+2. **Heavy lifting on the PC.** Tool grouping, git detection, duration and sentiment
+   are computed in the hook scripts. The ESP32 only maps `kind → state`.
+3. **No daemon.** Claude Code hooks are short-lived: they fire, send one HTTP
+   request, and exit. No long-running bridge process is needed.
 
 ---
 
-## 2) Uçlar (endpoints)
+## 1) Architecture
 
-| Uç | Yön | Ne yapar |
+```
+Claude Code hook (short-lived)  ──HTTP──►  ESP32 HTTP server (clawd.local)
+   curl / small POST                       renders the event: anim + sound + LED
+                                           touch → permission answer
+```
+
+- The ESP32 joins WiFi and runs **ESPAsyncWebServer**.
+- It advertises itself as `clawd.local` over **mDNS** (`MDNS.begin("clawd")`), so no
+  IP is hard-coded.
+- The initial WiFi setup happens once via a **WiFiManager** captive portal.
+- Each hook event POSTs to one of the device's endpoints; the HTTP body is the
+  envelope JSON.
+
+---
+
+## 2) Endpoints
+
+| Endpoint | Direction | What it does |
 |---|---|---|
-| `POST /e` | hook → cihaz | Fire-and-forget olay. Body = envelope. **204** döner. |
-| `POST /status` | statusLine → cihaz | HUD üst bandı özeti `{m,ctx,h5,wk}`. **204**. Güç yönetimine dokunmaz. |
-| `POST /words` | komut → cihaz | Spinner kelime havuzunu değiştir `{"w":["Cogitating",…]}`. **200** `{ok,n}` / boş→**400**. RAM'de tutulur, reboot'ta `spinner_words.h` varsayılanına döner. |
-| `POST /perm` | hook → cihaz | İzin sorusu. Body `{"id":7,"d":{tool,s,risk}}`. Hemen `{"pending":true}` döner, ekranda prompt açılır. |
-| `GET /perm/{id}` | hook → cihaz | Karar yoklaması. `{"decision":"allow"\|"deny"}` ya da `{"pending":true}`. |
-| `GET /health` | hook → cihaz | Canlılık + cihaz bilgisi: `{"fw":"0.1.0","caps":["led","audio","touch","ldr"]}`. |
+| `POST /e` | hook → device | Fire-and-forget event. Body = envelope. Returns **204**. |
+| `POST /status` | statusLine → device | HUD top-band summary `{m,ctx,h5,wk}`. **204**. Does not touch power management. |
+| `POST /words` | command → device | Replace the spinner word pool, `{"w":["Cogitating",…]}`. **200** `{ok,n}`, empty → **400**. Held in RAM; reverts to the `spinner_words.h` default on reboot. |
+| `POST /perm` | hook → device | Permission question. Body `{"id":7,"d":{tool,s,risk}}`. Returns `{"pending":true}` immediately and opens a prompt on screen. |
+| `GET /perm/{id}` | hook → device | Poll for the decision: `{"decision":"allow"\|"deny"}` or `{"pending":true}`. |
+| `GET /health` | hook → device | Liveness and device info: `{"fw":"0.1.0","caps":["led","audio","touch","ldr"]}`. |
 
-> Cihaz→PC kendiliğinden push (örn. `touch.pet`) **yok**: bu olaylar Claude Code'u etkilemez, sadece cihaz içi sevimliliktir. İzin cevabı da `GET /perm/{id}` ile çözülür. Bu yüzden PC tarafında dinleyici/daemon gerekmez.
+> There is **no** device→PC push (e.g. `touch.pet`): those events do not affect
+> Claude Code, they are device-local charm. Permission answers are resolved by
+> polling `GET /perm/{id}`, so the PC side needs no listener or daemon.
 
 ---
 
 ## 3) Envelope
 
-POST `/e` gövdesi:
+The `POST /e` body:
 
 ```json
 {"k":"tool.pre","d":{ }}
 ```
 
-| Alan | Zorunlu | Açıklama |
+| Field | Required | Description |
 |---|---|---|
-| `k` | ✓ | kind — noktalı isim alanı (`tool.pre`, `git`, `think`...) |
-| `d` | kind'a göre | payload; kısa anahtarlar |
+| `k` | ✓ | kind — a dotted namespace (`tool.pre`, `git`, `think`, …) |
+| `d` | per kind | payload, with short keys |
 
-`/perm` gövdesi ek olarak `id` taşır (korelasyon için PC üretir):
+The `/perm` body additionally carries an `id` (generated by the PC for correlation):
 
 ```json
 {"id":7,"d":{"tool":"Bash","s":"rm -rf build","risk":"high"}}
 ```
 
-HTTP zaten çerçeveleme/yön/tip bilgisini taşıdığı için seri porttaki `t` (mesaj tipi) ve satır sınırlayıcı (`\n`) alanlarına gerek yok.
+HTTP already carries framing, direction and type, so the serial protocol's `t`
+(message type) field and `\n` line delimiter are unnecessary.
 
 ---
 
-## 4) Olay kataloğu (`POST /e`)
+## 4) Event catalogue (`POST /e`)
 
-| `k` | `d` payload | Tetikleyici hook / anlam |
+| `k` | `d` payload | Triggering hook / meaning |
 |---|---|---|
 | `session.start` | `{cwd, model}` | `SessionStart` |
-| `session.end` | `{tools, edits, commits, ms}` | `SessionEnd` — günün özeti |
+| `session.end` | `{tools, edits, commits, ms}` | `SessionEnd` — summary of the session |
 | `prompt.submit` | `{len, mood}` | `UserPromptSubmit` (mood: neutral/fix/big/frustrated) |
-| `think` | `{on}` | düşünme başladı/bitti → nefes LED'i |
-| `tool.pre` | `{g, tool, s}` | `PreToolUse` (g=grup, s=özet) |
-| `tool.post` | `{g, ok, ms}` | `PostToolUse` (ok=başarı, ms=süre) |
+| `think` | `{on}` | thinking started/stopped → breathing LED |
+| `tool.pre` | `{g, tool, s}` | `PreToolUse` (g=group, s=summary) |
+| `tool.post` | `{g, ok, ms}` | `PostToolUse` (ok=success, ms=duration) |
 | `agent.spawn` | `{n}` | `Task`/workflow |
 | `agent.stop` | `{}` | `SubagentStop` |
-| `git` | `{op}` | op: commit/push (Bash input'undan) |
+| `git` | `{op}` | op: commit/push (from the Bash input) |
 | `notify` | `{kind, s}` | `Notification` (kind: idle/info) |
 | `compact` | `{}` | `PreCompact` |
-| `wait` | `{on}` | `Stop` sonrası bekleme |
-| `status` | `{ctx, cost}` | statusline'dan periyodik (ctx=0-100 context%) — aynı zamanda heartbeat |
+| `wait` | `{on}` | waiting after `Stop` |
+| `status` | `{ctx, cost}` | periodic, from the statusline (ctx=0-100 context%) — doubles as a heartbeat |
 
-### Tool grupları (`g`) — hook tarafı normalizasyon
+### Tool groups (`g`) — normalized on the hook side
 
-| grup | Claude Code araçları |
+| group | Claude Code tools |
 |---|---|
 | `exec` | Bash |
 | `edit` | Edit, Write, MultiEdit, NotebookEdit |
@@ -97,46 +106,58 @@ HTTP zaten çerçeveleme/yön/tip bilgisini taşıdığı için seri porttaki `t
 
 ---
 
-## 5) İzin akışı (HTTP — poll tabanlı)
+## 5) Permission flow (HTTP, poll-based)
 
-`PreToolUse` hook'u senkron bloklar; kararı dokunmatikten yoklayarak bekler. Bağlantıyı tutmak yerine yoklamak ESP32'de watchdog/timeout açısından daha sağlamdır.
+The `PreToolUse` hook blocks synchronously, polling for a decision from the
+touchscreen. Polling rather than holding the connection open is safer on the ESP32
+with respect to watchdogs and timeouts.
 
 ```
-hook  ──POST /perm {id:7, "rm -rf build", risk:high}──►  cihaz: prompt göster → {pending:true}
-hook  ──GET  /perm/7   (250 ms'de bir, ~10 sn)────────►  cihaz: {pending:true} ...
-        kullanıcı: clawd'a dokun = allow / kaydır = deny
-hook  ──GET  /perm/7──────────────────────────────────►  cihaz: {decision:"allow"}
-hook  → allow/deny döner, aracı serbest bırakır
+hook  ──POST /perm {id:7, "rm -rf build", risk:high}──►  device: show prompt → {pending:true}
+hook  ──GET  /perm/7   (every 250 ms, ~10 s)─────────►  device: {pending:true} ...
+        user: tap clawd = allow / swipe = deny
+hook  ──GET  /perm/7─────────────────────────────────►  device: {decision:"allow"}
+hook  → returns allow/deny, releasing the tool
 ```
 
-- `risk`: low/med/high → cihaz renk/aciliyet ayarlar.
-- **Timeout hook'ta** (öneri ~10 sn). Cevap gelmezse hook `ask`'e düşer → normal Claude Code izin ekranı (kilitlenme yok).
-- `id` eşleştirmesi eşzamanlı izinleri ayırır. Cihaz cevabı verdikten sonra `id`'yi kısa süre tutar (tekrar GET'e idempotent cevap).
+- `risk`: low/med/high → the device adjusts color and urgency.
+- **The timeout lives in the hook** (~10 s suggested). With no answer the hook falls
+  back to `ask`, i.e. Claude Code's normal permission screen — nothing locks up.
+- Matching on `id` keeps concurrent permissions apart. The device retains an `id`
+  briefly after answering, so a repeated GET is idempotent.
 
 ---
 
-## 6) Performans — hook'ları yavaşlatma
+## 6) Performance — don't slow the hooks down
 
-Her olay bir ağ çağrısıdır; her araca gecikme eklememek için:
+Every event is a network call, so to avoid adding latency to every tool:
 
-- **İzin dışı tüm olaylar fire-and-forget**: minik timeout + arka plan, cevap bekleme. Cihaz erişilemese bile Claude Code takılmaz:
+- **All non-permission events are fire-and-forget**: tiny timeout, backgrounded, no
+  waiting for a response. Claude Code does not stall even if the device is
+  unreachable:
   ```bash
   curl -s --max-time 0.3 http://clawd.local/e -H 'content-type: application/json' -d @- >/dev/null 2>&1 &
   ```
-- Sadece `perm.ask` bilinçli olarak bloklar (zaten bloklaması gereken tek olay).
+- Only `perm.ask` blocks deliberately — it is the one event that has to.
 
 ---
 
-## 7) Keşif, canlılık & güvenlik
+## 7) Discovery, liveness and security
 
-- **mDNS**: cihaz `clawd.local`. Hook'lar bu isme atar, IP değişse de çalışır.
-- **Canlılık**: cihaz son olay zamanını tutar; `status` POST'ları (statusline'dan periyodik) heartbeat görevi görür. **~15 sn** olaysızlıkta cihaz uyku/idle moduna geçer; yeni olayla uyanır.
-- **Güvenlik (LAN)**: opsiyonel paylaşılan token. Hook `X-clawd-key: <token>` header'ı ekler; cihaz eşleşmeyen isteği 401 ile reddeder. Rastgele LAN POST'larını önler.
-- **WiFi kurulumu**: WiFiManager captive portal — şifre bir kez girilir, NVS'e yazılır.
+- **mDNS**: the device is `clawd.local`. Hooks target that name and keep working if
+  the IP changes.
+- **Liveness**: the device tracks the last event time, and the periodic `status`
+  POSTs act as a heartbeat. After **~15 s** without events it goes idle/asleep, and
+  wakes on the next event.
+- **Security (LAN)**: an optional shared token. The hook adds an
+  `X-clawd-key: <token>` header and the device rejects mismatches with 401,
+  preventing stray POSTs from the local network.
+- **WiFi setup**: a WiFiManager captive portal — the password is entered once and
+  stored in NVS.
 
 ---
 
-## 8) Tam örnek akış (HTTP)
+## 8) A full example flow (HTTP)
 
 ```http
 GET  /health                                  → 200 {"fw":"0.1.0","caps":["led","audio","touch","ldr"]}
@@ -155,38 +176,44 @@ POST /e   {"k":"wait","d":{"on":true}}                                          
 
 ---
 
-## 9) Cihaz tarafı referans state machine (normatif değil)
+## 9) Device-side reference state machine (non-normative)
 
-Olaylar → clawd durumları için varsayılan eşleme (firmware'de değiştirilebilir):
+The default event → clawd state mapping (changeable in the firmware):
 
-| Olay | clawd durumu |
+| Event | clawd state |
 |---|---|
-| `think on` | `thinking` (nefes LED) |
+| `think on` | `thinking` (breathing LED) |
 | `tool.pre g=exec` | `hacking` |
 | `tool.pre g=edit` | `writing` |
 | `tool.pre g=search/read` | `searching` |
 | `tool.pre g=web` | `surfing` |
-| `agent.spawn` | `cloning` (mini-clawd'lar) |
+| `agent.spawn` | `cloning` (mini clawds) |
 | `tool.post ok=false` | `oops` (facepalm) |
 | `git op=commit/push` | `celebrate` / `rocket` |
 | `compact` | `defrag` |
-| `perm.ask` | `alert` (ekrana vurur) |
-| `wait on` | `waiting` → uzun sürerse `sleeping` (LDR karanlıksa) |
+| `perm.ask` | `alert` (bangs on the screen) |
+| `wait on` | `waiting` → `sleeping` if it lasts (and the LDR reads dark) |
 | `notify idle` | `idle` |
 
 ---
 
-## 10) Versiyonlama & genişletme
+## 10) Versioning and extension
 
-- Bilinmeyen `k` → cihaz sessizce yok sayar (ileri uyumluluk).
-- Yeni alanlar `d` içine eklenir; eski firmware görmezden gelir.
-- Kırıcı değişiklikte `/health` içindeki `fw` ile uyum kontrol edilir.
+- An unknown `k` is silently ignored by the device (forward compatibility).
+- New fields go inside `d`; older firmware ignores them.
+- For a breaking change, compatibility is checked against `fw` in `/health`.
 
 ---
 
-## 11) Açık kararlar
+## 11) Open decisions
 
-1. **Risk skoru kaynağı.** `perm.ask`'teki `risk`'i hook script'i basit bir desen tablosuyla hesaplasın (öneri): `rm -rf`, `git push --force`, `sudo`, `> /dev/...` → high; yazma/exec → med; salt-okur → low.
-2. **`d` anahtar uzunluğu.** Şu an okunabilirlik için tam isimler (`tool`, `mood`) + kısaltmalar (`g`, `s`) karışık. ESP32'de ArduinoJson rahat kaldırır; istenirse tam tutarlılığa çekilir.
+1. **Where the risk score comes from.** Suggestion: the hook script computes the
+   `risk` for `perm.ask` from a simple pattern table — `rm -rf`, `git push --force`,
+   `sudo`, `> /dev/...` → high; write/exec → med; read-only → low.
+2. **Key length in `d`.** Currently a mix of full names (`tool`, `mood`) and
+   abbreviations (`g`, `s`) for readability. ArduinoJson handles either on the
+   ESP32; this can be made fully consistent if wanted.
 
-**Sıradaki adım:** hook script'leri + `/e` ve `/perm` uçlarını taşıyan ESP32 iskeleti; birkaç olayı gerçek Claude Code'dan `clawd.local`'e basıp `/health` ve seri monitörden doğrulamak.
+**Next step:** the hook scripts plus an ESP32 skeleton carrying the `/e` and `/perm`
+endpoints, then pushing a few real Claude Code events to `clawd.local` and verifying
+them via `/health` and the serial monitor.

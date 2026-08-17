@@ -1,16 +1,16 @@
-# 04 — Touch (XPT2046 dokunmatik + kalibrasyon)
+# 04 — Touch (XPT2046 + calibration)
 
-CYD'nin dirençli dokunmatiğini (XPT2046) okur, dokunduğun yere ekranda nokta çizer ve
-ham (x,y,z) değerlerini seri porta basar. Rehberdeki **Adım 4.3** karşılığı — clawd'ın
-"kafasına dokun = izin ver" killer feature'ının kalbi.
+Reads the CYD's resistive touchscreen (XPT2046), draws a dot where you press, and
+prints the raw (x,y,z) values to the serial port. This is **step 4.3** from the guide
+— the heart of clawd's "tap its head = allow" killer feature.
 
-## En kritik nokta: ayrı SPI
+## The critical point: a separate SPI bus
 
-CYD'de dokunmatik, ekrandan **ayrı bir SPI hattındadır.** Bu yüzden kodda dokunmatik için
-kendi `SPIClass(VSPI)` örneğimizi açıp pinleri elle veriyoruz. Tek SPI sanıp gidersen
-dokunmatik hiç okunmaz — bu, CYD'nin en bilinen tuzağıdır.
+On the CYD, touch sits on a **separate SPI bus** from the display, so the code opens
+its own `SPIClass` instance and supplies the pins explicitly. Assume one shared bus
+and touch will never read — the CYD's best-known trap.
 
-| Sinyal | GPIO |
+| Signal | GPIO |
 |---|---|
 | T_CLK | 25 |
 | T_CS | 33 |
@@ -18,36 +18,38 @@ dokunmatik hiç okunmaz — bu, CYD'nin en bilinen tuzağıdır.
 | T_MISO | 39 |
 | T_IRQ | 36 |
 
-## Çalıştır
+## Run
 
 ```bash
 cd examples/04-touch
 pio run -t upload
 ```
 
-## Başarı kriteri
+## Success criteria
 
-- Ekrana dokununca parmağının altında **yeşil nokta** beliriyor.
-- Seri monitörde her dokunuşta `[clawd] ham x=.. y=.. z=.. -> ekran (..,..)`.
+- A **green dot** appears under your finger when you touch the screen.
+- A `[clawd] raw x=.. y=.. z=.. -> screen (..,..)` line per touch in the serial monitor.
 
-## Kalibrasyon (4 köşe)
+## Calibration (four corners)
 
-İlk yüklemede nokta parmağından kaymış / eksenler ters olabilir — bu normal, ham
-değerleri ekran piksellerine eşlememiz gerekiyor:
+On the first upload the dot may be offset from your finger, or the axes may be
+inverted. That's expected — the raw values still need mapping to screen pixels:
 
-1. **4 köşeye tek tek dokun**, seri monitörden ham `x` ve `y` değerlerini oku.
-2. En küçük/büyük ham `x` → `RAW_X_MIN/MAX`, ham `y` → `RAW_Y_MIN/MAX` olarak
-   `main.cpp`'ye yaz.
-3. Tekrar yükle; nokta artık parmağını takip etmeli.
+1. **Press each of the four corners** and read the raw `x` and `y` values from the
+   serial monitor.
+2. Put the smallest/largest raw `x` into `RAW_X_MIN/MAX` and raw `y` into
+   `RAW_Y_MIN/MAX` in `main.cpp`.
+3. Upload again; the dot should now follow your finger.
 
-| Belirti | Çözüm |
+| Symptom | Fix |
 |---|---|
-| Nokta var ama **eksenler ters** (sağa basınca sol) | `map()` içinde MIN↔MAX yer değiştir |
-| **X ve Y çapraz** (yatay basınca dikey gidiyor) | `setRotation` veya p.x↔p.y takası gerekir |
-| Dokunmatik **hiç okunmuyor** | Ayrı SPI pinlerini doğrula (25/33/32/39) |
-| Sürekli rastgele nokta | `p.z` (basınç) eşiği ekle: çok düşük z'leri yok say |
+| The dot appears but the **axes are inverted** (right press reads left) | Swap MIN↔MAX in `map()` |
+| **X and Y are crossed** (horizontal movement goes vertical) | Adjust `setRotation`, or swap p.x↔p.y |
+| Touch **never reads** | Verify the separate SPI pins (25/33/32/39) |
+| Random dots appear constantly | Add a `p.z` (pressure) threshold and ignore low values |
 
-## Sonraki adım
+## Next step
 
-Dokunmatik + ekran + LED birlikte → clawd'ın izin akışı: dokun = allow, kaydır = deny.
-Buradan sonrası `clawd-cyd-guide.md` Bölüm 5-6 (donanımı birleştir + WiFi köprüsü).
+Touch + display + LED together → clawd's permission flow: tap = allow, swipe = deny.
+From here, see sections 5-6 of `clawd-cyd-guide.md` (combining the hardware + the
+WiFi bridge).

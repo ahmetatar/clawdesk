@@ -1,35 +1,32 @@
 #pragma once
-// Sag-ust gorunum degistirici: iOS tarzi PILL TOGGLE (eski cift-yonlu takas oklarinin
-// yerine). Kapali = normal maskot gorunumu (topuz solda, yatak sonuk gri),
-// Acik = kota ekrani (topuz sagda, yatak clawd-turuncu).
+// Top-right view switcher: an iOS-style pill toggle. Off = mascot view (knob
+// left, grey track), on = usage view (knob right, clawd-orange track).
 //
-// Iki ekran da AYNI cizimi kullanir (hud.h ve usage.h) -> ayni yerde, ayni buton
-// hissi; tek fark "on" durumu. Dokunma bolgesi bundan cok daha genis
-// (UI_BTN_W/UI_BTN_H, main.cpp'deki inCorner) — bu yalniz gorsel.
+// Both views (hud.h and usage.h) draw the same toggle in the same place. This is
+// visual only — the touch zone is much larger (UI_BTN_W/UI_BTN_H, see inCorner
+// in main.cpp).
 //
-// Cizim: once kendi kutusu bg ile silinir (FreeFont'lar gibi arkaplan doldurmayan
-// parcalar yan yana gelmesin), sonra yatak + topuz. Statik; yalniz durum
-// degisince (mod gecisi / markAllDirty) yeniden cizilir.
+// Drawn by clearing its own box first, then track + knob. Redrawn only when the
+// state changes.
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "config.h"
 
-// Toggle yerlesimi (ekran koordinatlari, 320x240 landscape).
-constexpr int UI_TGL_W = 36, UI_TGL_H = 18;               // yatak olculeri
+// Layout in screen coordinates (320x240 landscape).
+constexpr int UI_TGL_W = 36, UI_TGL_H = 18;               // track size
 constexpr int UI_TGL_X = 320 - UI_TGL_W - 8, UI_TGL_Y = 4;
-constexpr int UI_TGL_KR = 7;                              // topuz yaricapi
+constexpr int UI_TGL_KR = 7;                              // knob radius
 
-// Kayma animasyonu: mod gecisinde (main.cpp toggleUsage) TRUE'ya cekilir, ilk
-// drawUiToggle cagrisi tuketir. Uykudan uyanma / tam yeniden cizim gibi
-// yollarda animasyon YOK — toggle dogrudan son halinde cizilir.
+// Set on a mode switch (main.cpp toggleUsage) and consumed by the next
+// drawUiToggle call. Wake-ups and full redraws skip the slide.
 inline bool uiToggleAnimate = false;
 
-// Toggle renkleri 8-8-8 (ara kareler icin lerp gerekiyor; RGB565 karistirilamaz).
+// Colors kept as 8-8-8: intermediate frames need lerp, which RGB565 cannot do.
 constexpr uint8_t UI_TGL_OFF_TRACK[3] = {72, 76, 84},   UI_TGL_ON_TRACK[3] = {213, 82, 56};
 constexpr uint8_t UI_TGL_OFF_KNOB[3]  = {168, 172, 180}, UI_TGL_ON_KNOB[3] = {255, 255, 255};
 
-// Tek kare: t = 0 (kapali) .. 1 (acik) arasi konum/renk.
+// One frame: t = 0 (off) .. 1 (on).
 inline void drawUiToggleFrame(TFT_eSPI *tft, uint16_t bg, float t) {
   const int r = UI_TGL_H / 2;
   tft->fillRect(UI_TGL_X - 2, 0, UI_TGL_W + 6, UI_TGL_Y + UI_TGL_H + 4, bg);
@@ -45,20 +42,19 @@ inline void drawUiToggleFrame(TFT_eSPI *tft, uint16_t bg, float t) {
                                 lerp(UI_TGL_OFF_KNOB, UI_TGL_ON_KNOB, 2));
   tft->fillRoundRect(UI_TGL_X, UI_TGL_Y, UI_TGL_W, UI_TGL_H, r, track);
 
-  const int x0 = UI_TGL_X + r, x1 = UI_TGL_X + UI_TGL_W - r;   // topuz merkez araligi
+  const int x0 = UI_TGL_X + r, x1 = UI_TGL_X + UI_TGL_W - r;   // knob centre range
   tft->fillCircle((int)(x0 + (x1 - x0) * t + 0.5f), UI_TGL_Y + r, UI_TGL_KR, knob);
 }
 
-// Kapali/acik son hal. uiToggleAnimate isaretliyse once ~130 ms'lik kayma
-// oynatilir (bloklayan kisa dongu; toggle debounce'i 450 ms, jest makinesi bu
-// sirada zaten kose basisini yok sayar).
+// Final off/on state. If uiToggleAnimate is set, plays a ~130 ms slide first
+// (a short blocking loop; the 450 ms debounce covers it).
 inline void drawUiToggle(TFT_eSPI *tft, uint16_t bg, bool on) {
   if (uiToggleAnimate) {
     uiToggleAnimate = false;
     constexpr int N = 8;
     for (int i = 1; i < N; i++) {
       float p = (float)i / N;
-      float e = p * p * (3.0f - 2.0f * p);              // smoothstep (yumusak giris/cikis)
+      float e = p * p * (3.0f - 2.0f * p);              // smoothstep
       drawUiToggleFrame(tft, bg, on ? e : 1.0f - e);
       delay(16);
     }

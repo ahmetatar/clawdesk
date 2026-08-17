@@ -1,16 +1,15 @@
 #pragma once
-// clawd guc yonetimi — iki kademeli idle durumu + yumusak arka isik fade.
+// clawd power management — two idle stages plus a soft backlight fade.
 //
-//   ACTIVE  (tam parlaklik)                          <- her event/dokunma buraya doner
-//     | T_DIM_MS boyunca olay yok
-//   DIM     (kisik ~%11, animasyon doner)
-//     | T_SLEEP_MS boyunca olay yok
-//   SLEEP   (arka isik 0, animasyon durur, CPU 80MHz, WiFi modem-sleep)
+//   ACTIVE  (full brightness)          <- any event or touch returns here
+//     | no events for T_DIM_MS
+//   DIM     (~11%, animation keeps running)
+//     | no events for T_SLEEP_MS
+//   SLEEP   (backlight off, animation stopped, CPU 80MHz, WiFi modem-sleep)
 //
-// WiFi ayakta kaldigi icin gelen POST /e paketi CPU'yu uyandirir; main loop
-// olayi kuyruktan alirken notifyActivity() cagirir -> ACTIVE'e doneriz.
-// Bu sinif SADECE arka isik + zamanlamayi yonetir; animasyon/CPU/WiFi yan
-// etkilerini main.cpp durum kenarlarina (edge) gore uygular.
+// WiFi stays up, so an incoming POST /e wakes the CPU and main loop calls
+// notifyActivity(). This class owns backlight and timing only; main.cpp applies
+// the animation/CPU/WiFi side effects on state edges.
 #include <Arduino.h>
 #include "config.h"
 
@@ -20,7 +19,7 @@ public:
 
   void begin() {
     ledcSetup(BL_CH, BL_FREQ, BL_RES);
-    ledcAttachPin(PIN_BL, BL_CH);   // tft.init()'ten SONRA cagir (BL pinini devralir)
+    ledcAttachPin(PIN_BL, BL_CH);   // must run AFTER tft.init(), which claims the BL pin
     _cur = _target = BL_FULL;
     ledcWrite(BL_CH, _cur);
     _state = ACTIVE;
@@ -28,13 +27,12 @@ public:
     _lastRamp = _lastActivity;
   }
 
-  // Bir olay/dokunma oldu: idle sayacini sifirla (tick ACTIVE'e cekecek).
+  // An event or touch happened: reset the idle timer.
   void notifyActivity() { _lastActivity = millis(); }
 
-  // Claude mesgul mu? true iken uyku/kisma kapali (Stop gelene kadar).
-  // main.cpp her olayda cagirir (siniflandirma orada: bitiren olaylar -> false).
-  // _busySince = busy'nin BASLADIGI an; emniyet tavani buradan olculur (son olaydan
-  // DEGIL) -> seyrek de olsa surekli damlayan olaylar tavani sonsuza uzatamaz.
+  // Is Claude busy? While true, dim/sleep is disabled. The safety cap is
+  // measured from when busy STARTED, so a steady trickle of events cannot
+  // extend it forever.
   void setBusy(bool b) {
     if (b && !_busy) _busySince = millis();
     _busy = b;
@@ -43,18 +41,14 @@ public:
   State state() const { return _state; }
   bool  asleep() const { return _state == SLEEP; }
 
-  // Her loop cagrilir. Durumu gunceller ve arka isigi hedefe dogru fade eder.
-  // Donus: durum bu tick'te DEGISTIYSE true (main yan etkileri edge'de uygular).
+  // Called every loop: updates the state and fades the backlight toward its
+  // target. Returns true when the state changed on this tick.
   bool tick() {
     uint32_t now = millis();
     uint32_t idle = now - _lastActivity;
 
-    // Claude mesgulken uyanik tut: emniyet tavanina kadar hep ACTIVE (kisma/uyku
-    // yok). Stop gelince (_busy=false) idle sayaci son olaydan baslar -> normal
-    // kis/uyku. Tavan asilirsa (Stop kayip) normal idle'a dus.
-    // TAVAN busy'nin BASINDAN olculur: eskiden son olaydan olculuyordu ve her yeni
-    // olay tavani bastan baslatiyordu -> 10 dk'dan sik damlayan bir olay akisi (ikinci
-    // bir oturum, arka plan isi, /loop) cihazi SURESIZ uyanik birakiyordu.
+    // Stay awake while busy, up to the safety cap; past the cap (a lost Stop)
+    // fall back to the normal idle timers.
     bool hold = _busy && (now - _busySince < T_BUSY_MAX_MS);
 
     State next = hold                 ? ACTIVE
@@ -65,7 +59,7 @@ public:
     _state = next;
     _target = (next == SLEEP) ? BL_OFF : (next == DIM) ? BL_DIM : BL_FULL;
 
-    // yumusak, bloklamayan fade
+    // soft, non-blocking fade
     if (_cur != _target && (now - _lastRamp) >= BL_RAMP_MS) {
       _lastRamp = now;
       if (_cur < _target) _cur = (_target - _cur > BL_STEP) ? _cur + BL_STEP : _target;
@@ -77,10 +71,10 @@ public:
 
 private:
   State    _state       = ACTIVE;
-  bool     _busy         = false;    // Claude calisiyor mu (Stop'a kadar)
-  uint32_t _busySince    = 0;        // _busy false->true kenari (emniyet tavaninin sifir noktasi)
+  bool     _busy         = false;    // Claude is working (until Stop)
+  uint32_t _busySince    = 0;        // where the safety cap is measured from
   uint32_t _lastActivity = 0;
   uint32_t _lastRamp     = 0;
-  uint16_t _cur          = BL_FULL;   // 0..255, ara degerler icin 16-bit
+  uint16_t _cur          = BL_FULL;   // 0..255, 16-bit for intermediate values
   uint16_t _target       = BL_FULL;
 };

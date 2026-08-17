@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_cooking': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_cooking': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_COOKING_W 64
 #define CLAWD_COOKING_H 64

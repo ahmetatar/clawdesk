@@ -1,47 +1,74 @@
-# TASK: Tüketici onboarding — kutudan flashlı cihaz + runtime WiFi provisioning
+# TASK: consumer onboarding — pre-flashed device + runtime WiFi provisioning
 
-**Durum:** BEKLEMEDE (sonra bakılacak)
-**Oluşturma:** 2026-07-19
-**Amaç:** Satılan cihaz için "satın al → plugin indir → tek komut çalıştır → clawd hazır" akışını gerçekten mümkün kılmak.
+**Status:** ON HOLD (revisit later)
+**Created:** 2026-07-19
+**Goal:** make the "buy → install the plugin → run one command → clawd is ready" flow
+genuinely possible for a device sold to a customer.
 
-## Hedef akış (müşteri)
+## Target flow (customer)
 
-1. Cihazı kutudan çıkarır (firmware **önceden flashlı**, kaynak/toolchain gerekmez).
-2. Telefonuyla cihazın SoftAP'ine bağlanır, kendi WiFi'sini seçip şifre girer.
-3. PC'de **tek komut** çalıştırır (plugin global install + statusLine + `CLAWD_HOST`).
-4. clawd hazır.
+1. Take the device out of the box (firmware **pre-flashed**, no source or toolchain
+   needed).
+2. Connect a phone to the device's SoftAP, pick their WiFi and enter the password.
+3. Run **one command** on the PC (global plugin install + statusLine + `CLAWD_HOST`).
+4. clawd is ready.
 
-## Bugün neden sağlanmıyor (2026-07-19 analizi)
+## Why that isn't possible today (analysis, 2026-07-19)
 
-Mevcut akış "kaynaktan derle + USB flashla" = geliştirici akışı. Blocker'lar:
+The current flow is "build from source + flash over USB" — a developer flow. The
+blockers:
 
-1. **WiFi derleme-anında gömülü (asıl blocker).** `include/secrets.h` → `#define WIFI_SSID/WIFI_PASS`; `connectWiFi()` bu makroları kullanıyor. WiFi değiştirmek = yeniden derle + flashla. Runtime provisioning yok.
-2. **Müşteri toolchain + kaynak koda muhtaç.** `install.sh` firmware'i kaynaktan derliyor (`pio run -t upload`). Ön koşul: platformio, jq, curl, claude-code + repo.
-3. **Statik IP de derleme-anında** (`include/config.h` satır 95-99) ve belirli bir ağa çakılı. Gönderilen default alıcının ağı için yanlış.
-4. **PC'nin cihaz IP'sini bulması flash'a bağlı.** `install.sh` IP'yi flash sırasında seri porttan yakalıyor. mDNS (`clawd.local`) extender arkasında güvenilmez.
+1. **WiFi is baked in at build time (the real blocker).** `include/secrets.h` defines
+   `WIFI_SSID`/`WIFI_PASS` and `connectWiFi()` uses those macros, so changing WiFi
+   means rebuilding and reflashing. There is no runtime provisioning.
+2. **The customer needs the toolchain and the source.** `install.sh` builds the
+   firmware from source (`pio run -t upload`), requiring platformio, jq, curl,
+   claude-code and the repo.
+3. **The static IP is also a build-time constant** (`include/config.h`) pinned to one
+   specific network. The shipped default would be wrong for the recipient's network.
+4. **The PC finds the device's IP only during flashing.** `install.sh` captures the IP
+   from the serial port while flashing, and mDNS (`clawd.local`) is unreliable behind
+   an extender.
 
-## Bugün zaten çalışan
+## What already works today
 
-PC tarafı "tek komuta" yakın ve sağlam: plugin global install, statusLine köprüsü, spinner sync, `CLAWD_HOST` env. Eksik olan **firmware yarısı** (provisioning).
+The PC side is close to a single command and is solid: global plugin install, the
+statusLine bridge, spinner sync and the `CLAWD_HOST` env. The **firmware half**
+(provisioning) is what's missing.
 
-## Yapılacaklar
+## To do
 
-### A) Firmware — kendini provision eden (linchpin)
-- [ ] İlk açılışta NVS'de (`Preferences`) kayıtlı WiFi yoksa **SoftAP + captive portal** başlat (`clawd-setup` ağı).
-- [ ] Portal: müşteri WiFi seçip şifre girer → kimlik NVS'ye yazılır → reboot → bağlanır.
-- [ ] `connectWiFi()`'yi "NVS'den oku, yoksa portal aç" olacak şekilde değiştir. `include/secrets.h` bağımlılığını kaldır.
-- [ ] Default **DHCP** (derleme-anı statik IP'yi bırak). Statik gerekiyorsa çalışma-anında ilk bağlanışta türet.
-- [ ] Bağlandıktan sonra cihazın IP'sini **ekranda** (ve portalda) göster → müşteri PC komutuna girer. mDNS güvenilmezliğini bu şekilde aş.
-- [ ] "WiFi'yi sıfırla" yolu (uzun dokunuş / özel jest) → NVS temizle, tekrar portal.
+### A) Firmware — self-provisioning (the linchpin)
+- [ ] On first boot, if NVS (`Preferences`) holds no WiFi credentials, start a
+      **SoftAP + captive portal** (a `clawd-setup` network).
+- [ ] The portal: the customer picks their WiFi and enters the password → the
+      credentials are written to NVS → reboot → it connects.
+- [ ] Change `connectWiFi()` to "read from NVS, otherwise open the portal", removing
+      the dependency on `include/secrets.h`.
+- [ ] Default to **DHCP** (drop the build-time static IP). If a static address is
+      needed, derive it at runtime on the first connection.
+- [ ] After connecting, show the device's IP **on screen** (and in the portal) so the
+      customer can enter it into the PC command — this is how to get around mDNS's
+      unreliability.
+- [ ] A "reset WiFi" path (a long press or a special gesture) → clear NVS, reopen the
+      portal.
 
-### B) PC — tek komut
-- [ ] `install.sh`'i ikiye ayır: firmware derleme/flash **müşteride yok**. Kalan komut sadece plugin global install + statusLine wire + `CLAWD_HOST` set (mevcut parçalar).
-- [ ] `CLAWD_HOST` girişi: müşteri portalın/ekranın gösterdiği IP'yi verir (veya mDNS dener).
+### B) PC — one command
+- [ ] Split `install.sh` in two: the customer has no firmware build/flash step. The
+      remaining command is just the global plugin install + statusLine wiring +
+      setting `CLAWD_HOST` (all of which already exist).
+- [ ] `CLAWD_HOST` input: the customer supplies the IP shown by the portal or the
+      screen (or tries mDNS).
 
-### C) Üretim/dağıtım
-- [ ] Fabrika flash prosedürü: tek `firmware.bin` (WiFi'siz, provisioning'li) tüm cihazlara.
-- [ ] README/kutu içi: "telefonla WiFi ver + PC'de tek komut" kısa kılavuz.
+### C) Production / distribution
+- [ ] A factory flashing procedure: one `firmware.bin` (no WiFi, with provisioning)
+      for every device.
+- [ ] README / in-box quick guide: "give it WiFi from your phone + run one command on
+      the PC".
 
-## Notlar
-- İlgili hafıza: `clawd-host-use-ip` (mDNS extender arkasında timeout), `clawd-install-uninstall-scripts`, `device-memory-budget` (huge_app partition — captive portal HTTP + DNS ekstra flash yer ister, kontrol et).
-- SoftAP captive portal için ESP32'de `DNSServer` + `WebServer/AsyncWebServer` gerekli; mevcut `AsyncWebServer` zaten var.
+## Notes
+- Related memory: `clawd-host-use-ip` (mDNS times out behind an extender),
+  `clawd-install-uninstall-scripts`, `device-memory-budget` (huge_app partition — a
+  captive portal's HTTP + DNS needs extra flash, check the headroom).
+- A SoftAP captive portal on the ESP32 needs `DNSServer` plus a
+  `WebServer`/`AsyncWebServer`; `AsyncWebServer` is already present.

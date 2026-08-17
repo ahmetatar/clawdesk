@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_love': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_love': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_LOVE_W 64
 #define CLAWD_LOVE_H 64

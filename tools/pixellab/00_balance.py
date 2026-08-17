@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Key'i dogrula + kredi/abonelik durumunu goster.
+# Verify the API key and show the credit/subscription balance.
 #   source tools/pixellab/secrets.sh && python3 tools/pixellab/00_balance.py
 import lib, json
 b = lib.get("/balance")

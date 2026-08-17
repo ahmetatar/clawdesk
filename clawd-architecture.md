@@ -1,24 +1,26 @@
-# clawd — Hook + ESP32 Mimari Tasarımı
+# clawd — hook + ESP32 architecture
 
-> Hook (PC köprüsü) ve ESP32 (PlatformIO) firmware'inin mimari planı. **Henüz kod yok** — katmanlar, klasör yapısı, kütüphane seçimleri ve açık kararlar.
+> The architectural plan for the hook (PC bridge) and the ESP32 (PlatformIO)
+> firmware. **No code yet** — layers, folder structure, library choices and open
+> questions.
 
-## Genel yerleşim
+## Overall layout
 
-İki parça, tek repo:
+Two parts, one repo:
 
 ```
 clawd-dashboard/
-├── hooks/                  # PC tarafı — Claude Code'a takılan köprü
-│   ├── dispatch            # tek giriş noktası (stdin JSON → HTTP POST)
-│   ├── lib/                # normalize: tool-grup, git, mood, risk
-│   └── clawd.config        # host (clawd.local), token, timeout'lar
+├── hooks/                  # PC side — the bridge into Claude Code
+│   ├── dispatch            # single entry point (stdin JSON → HTTP POST)
+│   ├── lib/                # normalization: tool group, git, mood, risk
+│   └── clawd.config        # host (clawd.local), token, timeouts
 │
-├── firmware/               # ESP32 PlatformIO projesi
+├── firmware/               # ESP32 PlatformIO project
 │   ├── platformio.ini
 │   ├── src/
 │   ├── include/
 │   ├── lib/
-│   └── data/               # animasyon kareleri, sesler (LittleFS/SD)
+│   └── data/               # animation frames, sounds (LittleFS/SD)
 │
 ├── clawd-device-protocol.md
 └── clawd-architecture.md
@@ -26,96 +28,116 @@ clawd-dashboard/
 
 ---
 
-## A) Hook tarafı mimarisi (PC)
+## A) Hook-side architecture (PC)
 
-**Bağlanma noktası:** `~/.claude/settings.json` içindeki `hooks` bloğu. Her event (`PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit`, `Notification`, `SessionStart/End`, `PreCompact`) aynı tek script'i çağırır; script `hook_event_name`'e bakıp ne yapacağına karar verir.
+**Attachment point:** the `hooks` block in `~/.claude/settings.json`. Every event
+(`PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit`, `Notification`,
+`SessionStart/End`, `PreCompact`) calls the same script, which decides what to do
+based on `hook_event_name`.
 
-**Tek dispatcher** (event başına ayrı script değil):
+**One dispatcher**, rather than a script per event:
 
 ```
-stdin (Claude Code'dan JSON)
+stdin (JSON from Claude Code)
    │
    ▼
 dispatch
    ├─ parse: hook_event_name, tool_name, tool_input, ...
-   ├─ normalize: tool→grup, "git commit/push" tespiti, mood, risk
-   ├─ map: hook event → protokol kind (k)
+   ├─ normalize: tool→group, detect "git commit/push", mood, risk
+   ├─ map: hook event → protocol kind (k)
    └─ emit:
-        ├─ normal olay  → POST /e  (fire-and-forget, arka plan, ~0.3s timeout)
-        └─ PreToolUse-izin → POST /perm + GET /perm/{id} poll (bloklar)
+        ├─ normal event      → POST /e  (fire-and-forget, background, ~0.3s timeout)
+        └─ PreToolUse permit → POST /perm + GET /perm/{id} poll (blocking)
 ```
 
-Sorumluluk ayrımı: **dispatcher = "ne oldu"yu bilen ve normalize eden kısım.** Cihaz aptal kalır.
+Separation of concerns: **the dispatcher knows and normalizes "what happened".** The
+device stays dumb.
 
-**Mimari kararlar (hook tarafı):**
-- **Dil:** `bash + curl + jq` (yalın, bağımlılıksız) vs `python` (mantık büyüyünce okunaklı).
-- **İzin hook'u ayrı davranır:** `PreToolUse` matcher'ı sadece izin gerektiren araçlarda bloklar; gerisi fire-and-forget.
-- **Hata dayanıklılığı:** cihaz kapalıysa `dispatch` sessizce 0 dönmeli — hook hatası Claude Code'u etkilememeli.
+**Decisions (hook side):**
+- **Language:** `bash + curl + jq` (plain, no dependencies) vs `python` (more
+  readable once the logic grows).
+- **The permission hook behaves differently:** the `PreToolUse` matcher blocks only
+  for tools that need permission; everything else is fire-and-forget.
+- **Fault tolerance:** if the device is off, `dispatch` must exit 0 silently — a hook
+  error must never affect Claude Code.
 
 ---
 
-## B) ESP32 firmware mimarisi (PlatformIO)
+## B) ESP32 firmware architecture (PlatformIO)
 
-### Katmanlar
+### Layers
 
 ```
 ┌─────────────────────────────────────────────┐
-│  net/        WiFi + mDNS + AsyncWebServer    │  ← /e, /perm, /health route'ları
+│  net/        WiFi + mDNS + AsyncWebServer   │  ← /e, /perm, /health routes
 ├─────────────────────────────────────────────┤
-│  protocol/   JSON envelope → Event struct    │  ← ArduinoJson parse
+│  protocol/   JSON envelope → Event struct   │  ← ArduinoJson parsing
 ├─────────────────────────────────────────────┤
-│  core/       EventQueue + StateMachine       │  ← clawd state, mood engine, perm store
+│  core/       EventQueue + StateMachine      │  ← clawd state, mood engine, perm store
 ├─────────────────────────────────────────────┤
-│  render/     ekran + animasyon oynatıcı       │  ← frame player
+│  render/     display + animation player     │  ← frame player
 ├─────────────────────────────────────────────┤
-│  io/         touch · RGB LED · buzzer · LDR  │
+│  io/         touch · RGB LED · buzzer · LDR │
 └─────────────────────────────────────────────┘
 ```
 
-### En kritik mimari karar: eşzamanlılık modeli
+### The critical decision: the concurrency model
 
-`ESPAsyncWebServer` callback'leri arka planda, ayrı bağlamda çalışır. **Display'e callback içinden dokunmak yasak** (SPI çakışması, crash). Doğru akış:
+`ESPAsyncWebServer` callbacks run in the background, in a separate context.
+**Touching the display from a callback is forbidden** (SPI collision, crash). The
+correct flow:
 
 ```
-HTTP callback (async)                 render loop (loop() / kendi task'ı)
+HTTP callback (async)                 render loop (loop() or its own task)
   parse → Event                          drain EventQueue
-  EventQueue'ya push  ───────────────►   StateMachine.apply(event)
-  /perm: PermStore'a kaydet,             animasyonu çiz, LED/ses sür
-         ticket/id ver                   touch oku → PermStore.resolve(id)
+  push onto EventQueue  ─────────────►   StateMachine.apply(event)
+  /perm: record in PermStore,            draw the animation, drive LED/sound
+         hand out a ticket/id            read touch → PermStore.resolve(id)
 ```
 
-**net ile render arasında thread-safe kuyruk** (FreeRTOS queue). Web sunucusu sadece kuyruğa yazar; tüm çizim tek yerde olur. İzin de aynı: callback `PermStore`'a "bekliyor" kaydı atar, `GET /perm/{id}` bunu okur, dokunmatik çözer.
+**A thread-safe queue between net and render** (a FreeRTOS queue). The web server
+only writes to the queue; all drawing happens in one place. Permissions work the
+same way: the callback records a "pending" entry in `PermStore`, `GET /perm/{id}`
+reads it, and the touchscreen resolves it.
 
-**Dual-core:** AsyncTCP kendi task'ında döner; render `loop()`'ta ya da Core 1'e pinli ayrı task'ta. Başlangıç için `loop()` yeterli.
+**Dual-core:** AsyncTCP runs in its own task; rendering happens in `loop()` or in a
+separate task pinned to Core 1. `loop()` is enough to start.
 
-### Stack / kütüphane seçimleri
+### Stack / library choices
 
-| Konu | Seçenek A | Seçenek B | Not |
+| Topic | Option A | Option B | Note |
 |---|---|---|---|
-| **Çizim** | LVGL (widget/animasyon hazır) | TFT_eSPI ham + sprite blit | LVGL şık ama ağır; kare-bazlı karakter için ham TFT_eSPI daha yalın/hızlı olabilir |
-| **Animasyon deposu** | SD kart (bol yer) | LittleFS (flash, dahili) | CYD'de SD, TFT ile SPI paylaşır → dikkat; LittleFS dertsiz ama ~1.5MB |
-| **Web sunucu** | ESPAsyncWebServer + AsyncTCP | senkron WebServer | Async öneri (non-blocking, izin tutması rahat) |
-| **JSON** | ArduinoJson | — | standart |
-| **WiFi kurulum** | WiFiManager | hardcode | captive portal öneri |
+| **Drawing** | LVGL (widgets/animation built in) | raw TFT_eSPI + sprite blit | LVGL is polished but heavy; raw TFT_eSPI may be leaner and faster for frame-based characters |
+| **Animation storage** | SD card (plenty of room) | LittleFS (internal flash) | On the CYD the SD shares SPI with the TFT — careful; LittleFS is trouble-free but ~1.5MB |
+| **Web server** | ESPAsyncWebServer + AsyncTCP | synchronous WebServer | Async recommended (non-blocking, easier to hold permissions) |
+| **JSON** | ArduinoJson | — | standard |
+| **WiFi setup** | WiFiManager | hardcoded | captive portal recommended |
 | **mDNS** | ESPmDNS | — | `clawd.local` |
 
-**Öneri başlangıç stack'i:** TFT_eSPI + sprite tabanlı kare animasyon + LittleFS (en az sürpriz, en hızlı ilk ışık). LVGL'i menü/izin ekranı zenginleşince ekleriz.
+**Recommended starting stack:** TFT_eSPI + sprite-based frame animation + LittleFS —
+the fewest surprises and the fastest first light. LVGL can come later, once the menu
+and permission screens get richer.
 
-### CYD'ye özgü tuzaklar (mimaride şimdiden hesaba katalım)
+### CYD-specific pitfalls to plan for
 
-- **Board:** `ESP32-2432S028R`. `platformio.ini`'de `esp32dev` env + TFT_eSPI pin'leri **build_flags** ile (ILI9341, özel pinler) — en çok takılınan yer.
-- **Dokunmatik:** XPT2046, çoğu CYD'de TFT'den **ayrı SPI** → ayrı SPI instance (bilinen gotcha).
-- **Donanım pinleri (doğrulanacak):** RGB LED ~GPIO 4/16/17 (active-low), LDR ~GPIO34, buzzer ~GPIO26 (DAC), SD ayrı SPI.
-- **SD vs TFT SPI paylaşımı:** ikisi aynı anda bus yönetimi ister → animasyonları LittleFS'e koymak ilk etapta kolaylaştırır.
+- **Board:** `ESP32-2432S028R`. In `platformio.ini`, the `esp32dev` env plus the
+  TFT_eSPI pins via **build_flags** (ILI9341, custom pins) — the most common snag.
+- **Touch:** XPT2046, on most CYDs on a **separate SPI bus** from the TFT, so it
+  needs its own SPI instance (a well-known gotcha).
+- **Hardware pins (to verify):** RGB LED ~GPIO 4/16/17 (active-low), LDR ~GPIO34,
+  buzzer ~GPIO26 (DAC), SD on a separate SPI.
+- **SD vs TFT sharing SPI:** using both at once requires bus management, so putting
+  the animations on LittleFS is simpler at first.
 
 ---
 
-## Açık mimari kararlar (kodlamadan önce)
+## Open decisions (before coding)
 
-1. **Hook dili:** bash+curl mu, python mı?
-2. **Çizim katmanı:** TFT_eSPI ham sprite mi, LVGL mi?
-3. **Animasyon deposu:** LittleFS mi, SD mi?
-4. **Render yeri:** `loop()` mu, pinli ayrı task mı? (başlangıç: `loop()`)
-5. **Animasyon kaynağı:** hazır clawd sprite seti var mı, yoksa ifadeleri sıfırdan mı üreteceğiz?
+1. **Hook language:** bash+curl or python?
+2. **Drawing layer:** raw TFT_eSPI sprites or LVGL?
+3. **Animation storage:** LittleFS or SD?
+4. **Where to render:** `loop()` or a pinned task? (start with `loop()`)
+5. **Animation source:** is there an existing clawd sprite set, or do we produce the
+   expressions from scratch?
 
-**Öneri varsayılanlar:** bash · TFT_eSPI · LittleFS · loop().
+**Recommended defaults:** bash · TFT_eSPI · LittleFS · loop().

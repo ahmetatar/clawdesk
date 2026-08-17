@@ -1,62 +1,70 @@
-# 07 — Async events + permission (protokol gövdesi)
+# 07 — Async events + permissions (the body of the protocol)
 
-ESPAsyncWebServer ile clawd protokolünün asıl gövdesi: olaylar + **dokunmatik izin akışı**
-(killer feature). `06`'daki yerleşik WebServer'dan non-blocking Async'e geçiş.
+The real body of the clawd protocol on ESPAsyncWebServer: events plus the **touch
+permission flow** (the killer feature). This moves from the built-in WebServer of
+`06` to a non-blocking async one.
 
-## Uçlar
+## Endpoints
 
-| Uç | Ne yapar |
+| Endpoint | What it does |
 |---|---|
-| `POST /e` | Fire-and-forget olay. Body = envelope `{k, d}`. **204** döner, ekran/LED tepki verir. |
-| `POST /perm` | İzin sorusu. Body `{id, d:{tool,s,risk}}`. `{"pending":true}` döner, ekranda prompt açılır. |
-| `GET /perm/{id}` | Karar yoklaması: `{"decision":"allow"\|"deny"}` ya da `{"pending":true}`. |
-| `GET /health` | Canlılık: `{"fw":"0.2.0","caps":["led","touch"]}`. |
+| `POST /e` | Fire-and-forget event. Body = the `{k, d}` envelope. Returns **204**; the screen and LED react. |
+| `POST /perm` | Permission question. Body `{id, d:{tool,s,risk}}`. Returns `{"pending":true}` and opens a prompt on screen. |
+| `GET /perm/{id}` | Poll for the decision: `{"decision":"allow"\|"deny"}` or `{"pending":true}`. |
+| `GET /health` | Liveness: `{"fw":"0.2.0","caps":["led","touch"]}`. |
 
-## Kritik mimari: callback ekrana dokunamaz
+## The critical constraint: callbacks must not touch the display
 
-AsyncWebServer callback'leri **ayrı task'ta** çalışır. Display'e (SPI) callback içinden
-dokunmak crash'e yol açar. Bu yüzden:
-- `POST /e` callback'i olayı **thread-safe FreeRTOS kuyruğuna** push eder; çizim yalnız `loop()`'ta.
-- `POST /perm` callback'i **mutex korumalı slota** yazar; prompt'u `loop()` çizer, dokunmatik çözer.
+AsyncWebServer callbacks run **on a separate task**, and touching the display (SPI)
+from one causes a crash. So:
+- The `POST /e` callback pushes onto a **thread-safe FreeRTOS queue**; all drawing
+  happens in `loop()`.
+- The `POST /perm` callback writes into a **mutex-protected slot**; `loop()` draws the
+  prompt and the touchscreen resolves it.
 
-## İki önemli tuzak (bu örnekte çözüldü)
+## Two important traps (solved in this example)
 
-1. **JSON handler GET'i kaçırıyor.** `AsyncCallbackJsonWebHandler("/perm")` varsayılan olarak
-   `/perm/7`'yi de + her method'u yakalar → `GET /perm/{id}` POST handler'ına takılıp state'i
-   bozar. Çözüm: `handler->setMethod(HTTP_POST)`.
-2. **Regex route.** `GET /perm/{id}` için `-D ASYNCWEBSERVER_REGEX=1` + `^\/perm\/([0-9]+)$`.
+1. **The JSON handler swallows the GET.** By default
+   `AsyncCallbackJsonWebHandler("/perm")` also catches `/perm/7` on every method, so
+   `GET /perm/{id}` hits the POST handler and corrupts the state. Fix:
+   `handler->setMethod(HTTP_POST)`.
+2. **Regex routes.** `GET /perm/{id}` needs `-D ASYNCWEBSERVER_REGEX=1` plus
+   `^\/perm\/([0-9]+)$`.
 
-## Kurulum & çalıştır
+## Setup and run
 
-`include/secrets.h`'yi doldur (bkz. `06`). Sonra:
+Fill in `include/secrets.h` (see `06`), then:
 
 ```bash
 cd examples/07-async-events
 pio run -t upload
 ```
 
-## Test (PC'den)
+## Testing (from the PC)
 
 ```bash
-IP=<ekrandaki-ip>   # veya clawd.local
+IP=<the-ip-on-screen>   # or clawd.local
 
-# olaylar — ekran/LED degisir
+# events — the screen and LED change
 curl -s -XPOST http://$IP/e -H 'content-type:application/json' -d '{"k":"tool.pre","d":{"g":"exec","s":"npm test"}}'
 curl -s -XPOST http://$IP/e -H 'content-type:application/json' -d '{"k":"git","d":{"op":"commit"}}'
 
-# izin akisi — ekranda IZIN? acilir; UST yari=allow, ALT yari=deny
+# permission flow — a PERMIT? prompt opens; top half = allow, bottom half = deny
 curl -s -XPOST http://$IP/perm -H 'content-type:application/json' -d '{"id":7,"d":{"tool":"Bash","s":"git push","risk":"med"}}'
-curl -s http://$IP/perm/7     # dokununca -> {"decision":"allow"} | {"deny"}
+curl -s http://$IP/perm/7     # after touching -> {"decision":"allow"} | {"deny"}
 ```
 
-## Başarı kriteri (doğrulandı)
+## Success criteria (verified)
 
-- `/e` olayları 204 döner, ekran MERHABA/HACKING/ARIYOR/OOPS/GIT!/DEFRAG... arası geçer.
-- `/perm` → ekranda **IZIN?** + tool + risk; **üst yarı=ALLOW (yeşil)**, **alt yarı=DENY (kırmızı)**.
-- `GET /perm/{id}` dokunuştan sonra kararı **kalıcı** ve **idempotent** döner.
+- `/e` events return 204 and the screen cycles through HELLO/HACKING/SEARCHING/OOPS/
+  GIT!/DEFRAG…
+- `/perm` shows **PERMIT?** plus the tool and risk; the **top half is ALLOW (green)**
+  and the **bottom half DENY (red)**.
+- After the touch, `GET /perm/{id}` returns the decision **persistently** and
+  **idempotently**.
 
-## Sonraki adım
+## Next step
 
-PC tarafı **hook script'i**: Claude Code hook event'lerini (`PreToolUse`, `Stop`, ...)
-normalize edip `clawd.local`'e POST'lar. İzin gerektiren araçlarda `POST /perm` + poll ile
-bloklar. Bundan sonrası gerçek Claude Code entegrasyonu.
+The PC-side **hook script**: it normalizes Claude Code hook events (`PreToolUse`,
+`Stop`, …) and POSTs them to `clawd.local`, blocking on `POST /perm` plus a poll for
+tools that need permission. After that comes the real Claude Code integration.

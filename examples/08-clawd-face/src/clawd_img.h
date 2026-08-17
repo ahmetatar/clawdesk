@@ -1,4 +1,4 @@
-// clawd referans logosu, RGB565, 267x240 (PIL LANCZOS)
+// clawd reference logo, RGB565, 267x240 (PIL LANCZOS)
 #pragma once
 #define CLAWD_IMG_W 267
 #define CLAWD_IMG_H 240

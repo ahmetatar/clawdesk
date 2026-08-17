@@ -1,62 +1,67 @@
-# PixelLab → clawd animasyon pipeline
+# PixelLab → clawd animation pipeline
 
-clawd maskotunu PixelLab API ile pixel-art üretip CYD ekranına (RGB565 frame'ler)
-basmak için araçlar. **Reçete: sanat = PixelLab, hareket = deterministik kod (hibrit).**
+Tools for generating clawd's pixel art with the PixelLab API and pushing it to
+the CYD display as RGB565 frames. **Recipe: art = PixelLab, motion =
+deterministic code (hybrid).**
 
-## Neden hibrit?
+## Why hybrid?
 
-- `animate-with-text-v2/v3` her frame'i yeniden çizer → karakter kayar, prop titrer (kötü).
-- `create-character-v3` referansı **yeniden hayal eder** → clawd yuvarlaklaşır (kimlik kaybı).
-- **`create-character-pro` + `method=rotate_character`** referansı yeniden çizmeden döndürür
-  → clawd'ın **bloklu/köşeli kimliği korunur** (bunu kullanıyoruz).
-- Karakterden `mode=v3` animasyon tutarlı ama yine de kafada/kolda hafif **bozulma** yapar.
-- Çözüm: PixelLab'in ürettiği **tek temiz frame** + **kodla deterministik hareket**
-  (`clawd_anim.py`) → sıfır bozulma, her sahnede clawd aynı boyut. İfade farkını
-  **ayırt edici öğe** verir (hacking → klavye, happy → kıvılcım, vb.).
+- `animate-with-text-v2/v3` redraws every frame → the character drifts and props
+  jitter.
+- `create-character-v3` **re-imagines** the reference → clawd gets rounder and
+  loses its identity.
+- **`create-character-pro` + `method=rotate_character`** rotates the reference
+  without redrawing it → clawd's **blocky silhouette survives**. This is what we use.
+- Animating from the character with `mode=v3` is consistent but still warps the
+  head and arms slightly.
+- So: **one clean frame from PixelLab** + **deterministic motion in code**
+  (`clawd_anim.py`) → zero warping, clawd the same size in every scene. Moods are
+  distinguished by a **distinctive element** (hacking → keyboard, happy → sparks).
 
-## Kurulum
+## Setup
 
-`source secrets.sh` (API key, gitignored). `pip install Pillow`. TLS proxy için
-build/flash'ta `SSL_CERT_FILE=~/.platformio/system-ca-bundle.pem` gerekir.
+`source secrets.sh` (API key, gitignored). `pip install Pillow`. Behind a TLS
+proxy, build/flash needs `SSL_CERT_FILE=~/.platformio/system-ca-bundle.pem`.
 
-## Akış
+## Flow
 
 ```bash
 cd tools/pixellab && source secrets.sh
 
-# 0) kredi/plan
+# 0) credits / plan
 python3 00_balance.py
 
-# 1) clawd taban sprite'i (image-to-pixelart)          -> out/clawd_base.png
+# 1) clawd base sprite (image-to-pixelart)             -> out/clawd_base.png
 python3 01_clawd_base.py A 64
 
-# 2) clawd'i SADIK rig'li karaktere cevir (rotate_character, bloklu kalir)
-#    -> character_id out/character_id.txt'e, 8 yon rotation char_zip2'ye
-python3 04_character.py            # tekrar icin --force
-#    kanonik on-yuz frame: out/clawd_south.png (clawd_anim.py bunu kullanir)
+# 2) turn clawd into a faithful rigged character (rotate_character, stays blocky)
+#    -> character_id in out/character_id.txt, 8-direction rotation in char_zip2
+python3 04_character.py            # --force to recreate
+#    canonical front frame: out/clawd_south.png (used by clawd_anim.py)
 
-# 3a) DETERMINISTIK animasyon (idle, hacking...) — ONERILEN, temiz, 0 kredi
-python3 clawd_anim.py all          # -> out/anim_<ad>/ + out/<ad>_montage.png
+# 3a) DETERMINISTIC animation (idle, hacking, ...) — recommended, clean, 0 credits
+python3 clawd_anim.py all          # -> out/anim_<name>/ + out/<name>_montage.png
 
-# 3b) (opsiyonel) karakterden v3/template animasyon — kredi harcar, bozulma olabilir
-python3 05_char_anim.py <ad> v3 "<aksiyon>" south 8
+# 3b) (optional) v3/template animation from the character — costs credits, may warp
+python3 05_char_anim.py <name> v3 "<action>" south 8
 
-# 4) frame'leri RGB565 header'a cevir                  -> out/<ad>.h
+# 4) convert frames to an RGB565 header                -> out/<name>.h
 python3 03_png_to_header.py out/anim_idle    clawd_idle
 python3 03_png_to_header.py out/anim_hacking clawd_hacking
 ```
 
-## clawd_anim.py (asıl animasyon aracı)
+## clawd_anim.py (the main animation tool)
 
-- Sabit **64×64 tuval**, clawd her sahnede **aynı boyut/konum**.
-- Kanonik clawd = `out/clawd_south.png` (rotate_character karakterin ön yüzü).
-- Hareketler piksel yeniden çizmeden: göz tarama, kol oynatma (yan çıkıntılar y7–14),
-  dikey nefes squash'ı. İfadeye özel öğeler kod ile (ör. `draw_keyboard`).
-- Yeni ifade eklemek: `anim_<ad>()` yaz + `ANIMS`'e ekle.
+- Fixed **64×64 canvas**; clawd is the **same size and position** in every scene.
+- Canonical clawd = `out/clawd_south.png` (the rotated character's front view).
+- Motion without redrawing pixels: eye scanning, arm movement (the side nubs at
+  y7–14), a vertical breathing squash. Mood-specific elements are drawn in code
+  (e.g. `draw_keyboard`).
+- To add a mood: write `anim_<name>()` and add it to `ANIMS`.
 
-## Notlar
+## Notes
 
-- 64×64 RGB565 = 8KB/frame. Cihaz `S` katıyla büyütür (`320/64=5`, `192px` için S=3).
-- Header'lar `examples/`'a kopyalanır; cihaz frame'leri sırayla `pushImage` ile basar.
-- `examples/09-clawd-anim` = ESKİ v2-idle yaklaşımı (arşiv; hâlâ çalışır).
-- Şemalar: `https://api.pixellab.ai/v2/openapi.json`, LLM dokümanı: `/v2/llms.txt`.
+- 64×64 RGB565 = 8KB per frame. The device scales by `S` (S=3 for 192px).
+- Headers are copied into `src/anims/`; the device pushes frames with `pushImage`.
+- `examples/09-clawd-anim` is the older v2-idle approach (archived, still works).
+- Schemas: `https://api.pixellab.ai/v2/openapi.json`, LLM doc: `/v2/llms.txt`.

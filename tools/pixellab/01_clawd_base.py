@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# clawd'in temiz pixel sprite tabanini uret. Iki yontem:
-#   A) image-to-pixelart : bizim GERCEK clawd gorselini temiz pixel-art'a cevirir (en sadik)
-#   B) bitforge          : referansi STIL olarak verip yeniden uretir (daha "cizilmis")
-# Cikti: out/clawd_base.png  (animasyonun reference_image'i bu olacak)
+# Generate clawd's base pixel sprite. Two methods:
+#   A) image-to-pixelart : converts the real clawd artwork to pixel art (most faithful)
+#   B) bitforge          : redraws it using the reference as a style hint
+# Output: out/clawd_base.png — the reference_image for every animation.
 #
 #   source tools/pixellab/secrets.sh && python3 tools/pixellab/01_clawd_base.py [A|B] [SIZE]
 import sys, os, lib
@@ -20,7 +20,7 @@ if mode == "A":
         "output_size": {"width": size, "height": size},
     })
 else:
-    print(f"bitforge (stil referansli) -> {size}x{size}")
+    print(f"bitforge (style reference) -> {size}x{size}")
     res = lib.post("/create-image-bitforge", {
         "description": "clawd: a cute coral/salmon blocky mascot creature, two small square dark eyes, two tiny ears on top, four short stubby legs, minimal, no mouth",
         "image_size": {"width": size, "height": size},
@@ -29,4 +29,4 @@ else:
     })
 
 lib.save_image_field(res["image"], "out/clawd_base.png")
-print("maliyet $", res.get("usage", {}).get("usd"))
+print("cost $", res.get("usage", {}).get("usd"))

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-# clawd_hacking klavyesini elle duzeltir (PixelLab'i tekrar cagirmadan).
+# Fix the clawd_hacking keyboard by hand, without calling PixelLab again.
 #
-# Iki sorun vardi:
-#   1) space bar en ALT sirada duruyordu; maskot klavyenin ARKASINDA oturdugu ve
-#      patileri klavyenin UST kenarina indigi icin space patilerden en uzak siraydi.
-#      -> tus alanini bir bant DONDURUYORUZ: space en uste (patilerin altina) gelir,
-#         diger uc sira birer bant asagi kayar. Sag taraftaki UZUN turuncu tus iki
-#         bant boyu oldugu icin dondurme (kesme degil) sart: butun halinde kayar.
-#   2) space hicbir frame'de basilmiyordu. -> secili frame'lerde pati 1px asagi
-#      uzar (y28 bezel satirina taser) ve ayni anda space keycap'i 1px alcalip
-#      koyulasir; bu, diger tuslarda zaten kullanilan "basili tus" dilinin aynisi.
+# Two problems:
+#   1) The space bar sat in the BOTTOM row, farthest from the paws — clawd sits
+#      behind the keyboard and its paws reach the TOP edge. So the key field is
+#      ROTATED by one band: space moves to the top, the other rows shift down.
+#      Rotating (rather than cutting) keeps the tall orange key on the right intact.
+#   2) Space was never pressed in any frame. On selected frames the paws now
+#      stretch 1px down into the bezel row while the space keycap drops 1px and
+#      darkens — the same "pressed key" language the other keys already use.
 #
-# Idempotent: kaynak out/anim_hacking okunur, sonuc out/anim_hacking_kb'ye yazilir.
+# Idempotent: reads out/anim_hacking, writes out/anim_hacking_kb.
 #
 #   python3 tools/pixellab/10_hacking_space_fix.py
 #   python3 tools/pixellab/03_png_to_header.py out/anim_hacking_kb clawd_hacking
@@ -23,22 +22,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "out", "anim_hacking")
 DST = os.path.join(HERE, "out", "anim_hacking_kb")
 
-# --- klavye geometrisi (64x64 sprite, olculdu) ---
-KB_TOP = 29          # ilk tus satiri
-BANDS = 4            # 4 tus sirasi
-BAND_H = 4           # 3 satir keycap + 1 satir bosluk
+# --- keyboard geometry (measured on the 64x64 sprite) ---
+KB_TOP = 29          # first key row
+BANDS = 4            # 4 key rows
+BAND_H = 4           # 3 keycap rows + 1 gap row
 FIELD_H = BANDS * BAND_H          # y29..y44
-SPACE_X0, SPACE_X1 = 14, 44       # space bar sutunlari (dahil)
-BEZEL_Y = 28                      # klavyenin ust kenari (pati buraya tasar)
-PAW_COLS = list(range(24, 28)) + list(range(36, 40))   # ic pati cifti = "bas parmak"
-PRESS_FRAMES = {2, 6}             # 8 frame'de 2 vurus (~111ms*8 -> ~0.9sn'de bir)
+SPACE_X0, SPACE_X1 = 14, 44       # space bar columns (inclusive)
+BEZEL_Y = 28                      # top edge of the keyboard, where the paws reach
+PAW_COLS = list(range(24, 28)) + list(range(36, 40))   # the inner pair of paws
+PRESS_FRAMES = {2, 6}             # 2 keystrokes per 8 frames
 
-BODY = (60, 58, 78, 255)          # klavye govdesi (basili keycap'in ustunde gorunur)
-PRESSED = (96, 92, 120, 255)      # basili keycap rengi (mevcut tuslarla ayni)
+BODY = (60, 58, 78, 255)          # keyboard body, visible above a pressed keycap
+PRESSED = (96, 92, 120, 255)      # pressed keycap color, same as the other keys
 
 
 def rotate_key_field(px):
-    """Tus alanini bir bant asagi dondur: space en uste gelir."""
+    """Rotate the key field down by one band, bringing space to the top."""
     src = {y: [px[x, y] for x in range(64)] for y in range(KB_TOP, KB_TOP + FIELD_H)}
     for y in range(KB_TOP, KB_TOP + FIELD_H):
         row = src[KB_TOP + ((y - KB_TOP - BAND_H) % FIELD_H)]
@@ -47,19 +46,19 @@ def rotate_key_field(px):
 
 
 def press_space(px):
-    """Space'i basili ciz + ic patileri 1px asagi uzat."""
+    """Draw space pressed and stretch the inner paws 1px down."""
     for x in range(SPACE_X0, SPACE_X1 + 1):
-        px[x, KB_TOP] = BODY              # keycap 1px alcaldi
+        px[x, KB_TOP] = BODY              # keycap dropped 1px
         px[x, KB_TOP + 1] = PRESSED
         px[x, KB_TOP + 2] = PRESSED
     for x in PAW_COLS:
-        px[x, BEZEL_Y] = px[x, BEZEL_Y - 1]   # pati rengini asagi tasi
+        px[x, BEZEL_Y] = px[x, BEZEL_Y - 1]   # carry the paw color down
 
 
 os.makedirs(DST, exist_ok=True)
 frames = sorted(glob.glob(os.path.join(SRC, "frame_*.png")))
 if not frames:
-    raise SystemExit("frame bulunamadi: " + SRC)
+    raise SystemExit("no frames found in: " + SRC)
 
 for i, fp in enumerate(frames):
     im = Image.open(fp).convert("RGBA")
@@ -69,4 +68,4 @@ for i, fp in enumerate(frames):
         press_space(px)
     out = os.path.join(DST, os.path.basename(fp))
     im.save(out)
-    print(("yazildi " + out) + ("  [space basili]" if i in PRESS_FRAMES else ""))
+    print(("wrote " + out) + ("  [space pressed]" if i in PRESS_FRAMES else ""))

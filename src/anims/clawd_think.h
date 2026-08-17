@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_think': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_think': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_THINK_W 64
 #define CLAWD_THINK_H 64
