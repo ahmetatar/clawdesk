@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_idle': 16 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_idle': 16 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_IDLE_W 64
 #define CLAWD_IDLE_H 64

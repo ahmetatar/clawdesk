@@ -1,53 +1,55 @@
 # 06 — WiFi + mDNS + /health
 
-WiFi'ye bağlanır, kendini `clawd.local` olarak duyurur, `GET /health` ile JSON döner.
-clawd protokolünün **taşıma katmanının ilk adımı** — PC ↔ cihaz köprüsü ayağa kalkıyor.
+Joins WiFi, advertises itself as `clawd.local` and answers `GET /health` with JSON.
+This is the **first step of the clawd protocol's transport layer** — the PC ↔ device
+bridge coming up.
 
-Yerleşik `WebServer` (ESP32 çekirdeği) kullanılır — harici kütüphane yok. `/e` ve
-`/perm` uçlarını eklerken (sonraki adım) ESPAsyncWebServer'a geçeceğiz.
+It uses the built-in `WebServer` from the ESP32 core, with no external library. When
+we add the `/e` and `/perm` endpoints (the next step) we switch to ESPAsyncWebServer.
 
-## Kurulum: WiFi bilgileri
+## Setup: WiFi credentials
 
-`include/secrets.h` dosyasını kendi ağ bilgilerinle doldur (bu dosya `.gitignore`'da,
-şifre repoya girmez):
+Fill in `include/secrets.h` with your own network (the file is gitignored, so the
+password never enters the repo):
 
 ```c
-#define WIFI_SSID "ev_wifi_adin"
-#define WIFI_PASS "wifi_sifren"
+#define WIFI_SSID "your_wifi_name"
+#define WIFI_PASS "your_wifi_password"
 ```
 
-> ⚠️ ESP32 yalnızca **2.4 GHz** WiFi'ye bağlanır (5 GHz desteklemez). Ağın 2.4 GHz
-> bandını kullan.
+> ⚠️ The ESP32 only connects to **2.4 GHz** WiFi (no 5 GHz support). Use your
+> network's 2.4 GHz band.
 
-## Çalıştır
+## Run
 
 ```bash
 cd examples/06-wifi-health
 pio run -t upload
 ```
 
-## Başarı kriteri
+## Success criteria
 
-- Ekranda yeşil **"clawd ONLINE"** + cihazın **IP adresi** + `http://clawd.local/health`.
-- Seri monitörde `WiFi OK. IP: ...` ve `HTTP sunucu :80 ayakta`.
-- PC'den (aynı ağda):
+- A green **"clawd ONLINE"** on screen with the device's **IP address** and
+  `http://clawd.local/health`.
+- `WiFi OK. IP: ...` and `HTTP server :80 up` in the serial monitor.
+- From the PC (on the same network):
   ```bash
   curl http://clawd.local/health
   # -> {"fw":"0.1.0","caps":["led","touch"]}
   ```
-  `clawd.local` çözülmezse ekrandaki IP ile dene: `curl http://<IP>/health`.
+  If `clawd.local` does not resolve, use the IP on screen: `curl http://<IP>/health`.
 
-## Sorun giderme
+## Troubleshooting
 
-| Belirti | Sebep / çözüm |
+| Symptom | Cause / fix |
 |---|---|
-| Ekranda "WiFi BAGLANAMADI" | SSID/şifre yanlış, ya da ağ 5 GHz (2.4 GHz kullan) |
-| `clawd.local` çözülmüyor | mDNS bazı ağlarda/PC'lerde takılır; ekrandaki IP ile curl yap |
-| curl bağlanmıyor ama IP ekranda var | PC ile cihaz **aynı ağda/VLAN'da** mı? Misafir ağı izolasyonu? |
-| Sürekli bağlanıyor, IP yok | Sinyal zayıf olabilir; routera yaklaştır |
+| "WiFi CONNECTION FAILED" on screen | Wrong SSID/password, or a 5 GHz network (use 2.4 GHz) |
+| `clawd.local` does not resolve | mDNS stalls on some networks/PCs; curl the IP shown on screen |
+| curl cannot connect although the IP is shown | Are the PC and the device on the **same network/VLAN**? Guest-network isolation? |
+| It keeps connecting and never gets an IP | The signal may be weak; move it closer to the router |
 
-## Sonraki adım
+## Next step
 
-`07` — ESPAsyncWebServer'a geçiş + `POST /e` (fire-and-forget olay) ve `POST /perm`
-(dokunmatik izin akışı). clawd protokolünün asıl gövdesi. Hook script'i ile gerçek
-Claude Code event'lerini `clawd.local`'e basacağız.
+`07` — moving to ESPAsyncWebServer plus `POST /e` (fire-and-forget events) and
+`POST /perm` (the touch permission flow), the real body of the clawd protocol. After
+that, a hook script pushes real Claude Code events to `clawd.local`.

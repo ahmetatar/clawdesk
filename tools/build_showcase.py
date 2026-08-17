@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-# clawd maskot vitrinini uretir: docs/showcase.html (tek dosya, disa bagimlilik yok).
+# Builds the clawd mascot showcase: docs/showcase.html, one self-contained file.
 #
-# KAYNAK = src/anims/*.h + src/anims.h, yani CIHAZIN GERCEKTEN CALISTIRDIGI veri.
-# PixelLab ciktilarindan (tools/pixellab/out) DEGIL: bir animasyon elle rotuslandiysa
-# (bkz. 10_hacking_space_fix.py) vitrin yine cihazdakini gosterir, sanat ile sayfa
-# birbirinden kaymaz. Frame sayisi / hiz / LED rengi / kirpma satiri da ayni sebeple
-# okunur, elle yazilmaz.
+# The source is src/anims/*.h + src/anims.h — the data the device actually runs,
+# not the PixelLab output. If an animation was retouched by hand (see
+# 10_hacking_space_fix.py) the showcase still shows what ships. Frame count,
+# speed, LED color and clip rows are read from the same place rather than
+# hand-written.
 #
-#   python3 tools/build_showcase.py                  -> docs/showcase.html (tam sayfa)
-#   python3 tools/build_showcase.py --fragment PATH  -> ayni sayfa, <html>/<head>/<body>
-#                                                       sarmalayicisi olmadan (Artifact
-#                                                       yayini bunu ister).
+#   python3 tools/build_showcase.py                  -> docs/showcase.html
+#   python3 tools/build_showcase.py --fragment PATH  -> the same page without the
+#                                                       <html>/<head>/<body> wrapper
 #
-# Yeni animasyon eklerken: src/anims.h'ye kaydettikten sonra asagidaki MEANING
-# sozlugune bir satir ekle (tetikleyici + ne anlattigi), sonra scripti calistir.
+# When adding an animation: register it in src/anims.h, add a line to MEANING
+# below (trigger + what it says), then run this script.
 import base64
 import io
 import json
@@ -28,38 +27,38 @@ ANIMS_H = os.path.join(ROOT, "src", "anims.h")
 ANIM_DIR = os.path.join(ROOT, "src", "anims")
 OUT = os.path.join(ROOT, "docs", "showcase.html")
 
-# Cihaz gercegi (include/config.h + src/main.cpp ile ayni olmali).
+# Device facts — must match include/config.h and src/main.cpp.
 SCREEN_W, SCREEN_H = 320, 240
-ANIM_S = 3                       # sprite olcegi
-XOFF, YOFF = 64, 24              # sprite'in ekrandaki sol-ust kosesi
-HUD_TOP = 177                    # bu satirdan asagisi HUD'a ait (3 satir)
-MINI_S = 1                       # mini clawd 1:1 cizilir (src/mini.h)
-MINI_X, MINI_Y = 41, 130         # ilk slotun ev konumu (mini.h HOME_X / ROW_Y)
+ANIM_S = 3                       # sprite scale
+XOFF, YOFF = 64, 24              # sprite's top-left corner on screen
+HUD_TOP = 177                    # everything below this row belongs to the HUD
+MINI_S = 1                       # mini clawd is drawn 1:1 (src/mini.h)
+MINI_X, MINI_Y = 41, 130         # home position of the first slot (mini.h)
 
-# Her maskotun ne anlattigi + neyin tetikledigi. Tetikleyiciler src/main.cpp
-# mapEvent() ve dokunmatik/guc kancalarindan alindi.
+# What each pose says and what triggers it, taken from mapEvent() and the touch /
+# power hooks in src/main.cpp.
 MEANING = {
-    "idle": ("Dinlenme", "Isin yok. Her sey bittiginde donulen sade poz; tool.post (basarili) ve session.stop buraya dusurur."),
-    "hacking": ("Calisiyor", "Bir tool calistiriliyor. tool.pre her zaman klavyeyle baslar."),
-    "cooking": ("Is uzadi", "Klavye pozu WORK_LONG_MS'i asinca tavaya gecer ve is bitene kadar orada kalir. Surpriz degil, bilgi: bu is kaynatiyor."),
-    "think": ("Dusunuyor", "think ack, prompt.submit ve wait. Uzun frame araligi (200 ms) sakin bir tempo verir."),
-    "ask": ("Sana soruyor", "AskUserQuestion ve ExitPlanMode. Bunlar da tool.pre gonderir ama calisma degil BEKLEME durumudur, o yuzden klavye yerine soru pozu."),
-    "agents": ("Alt-agent'lar", "agent.spawn. Maskot yukari kayip alt sirada gezinen mini'lere bakar; ekranin yalniz ust bandi cizilir, alt bant mini'lere kalir."),
-    "happy": ("Sevinc", "git olayi ve session.start. Gecici poz: HOLD_MS sonra dinlenmeye doner."),
-    "oops": ("Hata", "Basarisiz tool.post. Gecici poz."),
-    "compact": ("Zihin temizleniyor", "PreCompact. Beyin ve yanip sonen minik yildizlar."),
-    "brain_full": ("Context kritik", "Context yuzdesi esigi asinca 'sakin dinlenme' pozunun yerini bu alir; beyin bardak gibi dolup bosalir."),
-    "sleep": ("Uyuklama", "Guc yoneticisi ekrani DIM'e alinca. Uyaninca dinlenmeye doner."),
-    "tickle": ("Gidiklanma", "Ekrana CIFT DOKUNUS. Dokunustan onceki poz hatirlanir, bittiginde ona donulur."),
-    "love": ("Oksama", "Ekrana SURTME. Yukselen kalpler; yine dokunus oncesi poza donulur."),
-    "idle_music": ("Kulaklikla muzik", "Su an HICBIR olay tetiklemiyor. Kayitta hazir duruyor; en guclu aday session.stop (“tur bitti, sira sende”)."),
+    "idle": ("Resting", "Nothing to do. The plain pose everything returns to; a successful tool.post and session.stop both land here."),
+    "hacking": ("Working", "A tool is running. tool.pre always starts at the keyboard."),
+    "cooking": ("Long job", "Kept as source but not built into the firmware; the working pose is always the keyboard."),
+    "think": ("Thinking", "think ack, prompt.submit and wait. The long frame interval (200 ms) sets a calm pace."),
+    "ask": ("Asking you", "AskUserQuestion and ExitPlanMode. These also arrive as tool.pre, but they mean waiting rather than working — hence the question pose."),
+    "agents": ("Subagents", "agent.spawn. The mascot shifts up and looks down at the row of minis; only the top band is drawn, leaving the bottom to them."),
+    "happy": ("Delight", "git events and session.start. Transient: returns to rest after HOLD_MS."),
+    "oops": ("Error", "A failed tool.post. Transient."),
+    "compact": ("Clearing the mind", "PreCompact. The brain plus twinkling stars."),
+    "brain_full": ("Context critical", "Once the context percentage crosses the threshold, this replaces the resting pose; the brain fills and empties like a glass."),
+    "sleep": ("Dozing", "Shown once the power manager dims the screen. Returns to rest on wake."),
+    "tickle": ("Tickled", "A double-tap on the screen. The pre-touch pose is remembered and restored afterwards."),
+    "love": ("Petted", "A stroke across the screen. Rising hearts, then back to the pre-touch pose."),
+    "idle_music": ("Music on headphones", "Nothing triggers it yet. Registered and ready; the likeliest owner is session.stop."),
 }
 
-MINI_NOTE = ("Mini clawd", "Animasyon degil, tek kare. Her aktif alt-agent icin ekranin alt bandinda bir tane gezinir.")
+MINI_NOTE = ("Mini clawd", "A single frame, not an animation. One sways in the bottom band for each active subagent.")
 
 
 def parse_registry():
-    """src/anims.h icindeki ANIMS tablosunu oku (sira, hiz, LED, gecicilik)."""
+    """Read the ANIMS table from src/anims.h (order, speed, LED, transience)."""
     src = open(ANIMS_H).read()
     table = src.split("static const Anim ANIMS[ANIM_COUNT] = {", 1)[1].split("\n};", 1)[0]
     row = re.compile(
@@ -80,18 +79,18 @@ def parse_registry():
 
 
 def push_rows(name):
-    """src/anims.h animPushRows(): cihaz bu anim'in kac satirini ciziyor."""
+    """Mirrors animPushRows() in src/anims.h: how many rows the device draws."""
     return 33 if name == "agents" else 51
 
 
 def read_frames(sym):
-    """clawd_<sym>.h icindeki RGB565 dizisini PIL goruntulerine cevir."""
+    """Convert the RGB565 array in clawd_<sym>.h into PIL images."""
     path = os.path.join(ANIM_DIR, "clawd_%s.h" % sym.replace("clawd_", ""))
     txt = open(path).read()
     w = int(re.search(r"_W (\d+)", txt).group(1))
     h = int(re.search(r"_H (\d+)", txt).group(1))
     blocks = [b for b in re.findall(r"\{([0-9A-Fa-fx,]+)\}", txt) if b.count(",") > w]
-    if not blocks:                        # tek kareli sprite (mini)
+    if not blocks:                        # single-frame sprite (mini)
         blocks = re.findall(r"\{([0-9A-Fa-fx,]+)\}", txt)
     imgs = []
     for b in blocks:
@@ -138,14 +137,14 @@ def build():
         "name": "mini", "label": MINI_NOTE[0], "note": MINI_NOTE[1],
         "interval": 0, "led": "off", "rows": h, "full": h, "w": w,
         "scale": MINI_S, "x": MINI_X, "y": MINI_Y,
-        # mini bir "poz" degil: hiz, LED ve gecicilik onun icin tanimsiz.
+        # the mini is not a pose: speed, LED and transience do not apply
         "na": True, "transient": False,
         "frames": [data_uri(imgs[0])],
     })
 
-    # Ekran zemini sprite'in KENDI kosesinden okunur. config.h'deki BG_R/G/B degil:
-    # o deger RGB565'e yuvarlanirken kayiyor (#24272C -> #202429) ve sabit yazilirsa
-    # sprite ile sayfa arasinda gorunur bir dikdortgen seam kaliyor.
+    # Read the screen background from the sprite's own corner, not from config.h:
+    # BG_R/G/B shifts when rounded to RGB565, and hard-coding it leaves a visible
+    # seam between the sprite and the page.
     bg = "#%02X%02X%02X" % read_frames("idle")[0][0].getpixel((0, 0))
 
     html = TEMPLATE.replace("__DEVICE_BG__", bg).replace("__DATA__", json.dumps({
@@ -159,23 +158,23 @@ def build():
         dest = sys.argv[sys.argv.index("--fragment") + 1]
         head = html.split("<head>", 1)[1].split("</head>", 1)[0]
         body = html.split("<body>", 1)[1].split("</body>", 1)[0]
-        # <meta>/<title> disari, geri kalani (style) icerik akisinda kalir
+        # drop <meta>/<title>; the rest (style) stays in the content flow
         head = re.sub(r"<meta[^>]*>\s*", "", head)
         html = head.strip() + "\n" + body.strip() + "\n"
 
     os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
     open(dest, "w").write(html)
     total = sum(len(e["frames"]) for e in entries)
-    print("yazildi %s  (%d maskot, %d kare, %d KB)"
+    print("wrote %s  (%d poses, %d frames, %d KB)"
           % (os.path.relpath(dest, ROOT), len(entries), total, len(html) // 1024))
 
 
 TEMPLATE = r"""<!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>clawd — maskot vitrini</title>
+<title>clawd — Mascot Showcase</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -247,7 +246,7 @@ TEMPLATE = r"""<!doctype html>
     top: calc(var(--y) / 240 * 100%);
     width: calc(var(--sw) / 320 * 100%);
   }
-  /* HUD icin ayrilan alt bant — sprite oraya hic cizilmez */
+  /* the bottom band reserved for the HUD — the sprite is never drawn there */
   .hud-reserve {
     position: absolute; left: 0; right: 0; bottom: 0;
     height: calc((240 - 177) / 240 * 100%);
@@ -330,8 +329,8 @@ TEMPLATE = r"""<!doctype html>
   }
   .card:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--edge)); }
   .card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  /* Sabit cerceve: 33 satirlik agents ve 40px mini de dahil butun kartlarin
-     alt kenari ve kunye satiri ayni hizada kalsin. */
+  /* Fixed frame so every card's bottom edge and caption line up, including the
+     33-row agents pose and the 40px mini. */
   .card .film { background: var(--device); position: relative; aspect-ratio: 64 / 51; }
   .card img {
     image-rendering: pixelated; display: block;
@@ -363,11 +362,12 @@ TEMPLATE = r"""<!doctype html>
 <body>
 <div class="wrap">
   <p class="eyebrow">clawd · ESP32-2432S028R</p>
-  <h1>Maskot vitrini</h1>
+  <h1>Mascot showcase</h1>
   <p class="lede">
-    Cihazdaki her poz bir sey anlatir, hicbiri dekor degil. Asagidaki ekran gercek
-    olculerinde: 320&times;240, sprite 64&times;64'ten 3 kat buyutulup ayni koordinata
-    basiliyor, alt bant HUD'a ayrilmis durumda. Bir maskot sec, kendi hizinda oynasin.
+    Every pose on the device means something; none of them is decoration. The
+    screen below is shown at its real size: 320&times;240, with the 64&times;64
+    sprite scaled 3&times; and pushed to the same coordinates, and the bottom band
+    reserved for the HUD. Pick a pose and it plays at its own speed.
   </p>
 
   <div class="stage">
@@ -375,13 +375,13 @@ TEMPLATE = r"""<!doctype html>
       <div class="device">
         <div class="glass" id="glass">
           <img id="hero" alt="">
-          <div class="hud-reserve"><span>HUD &mdash; 3 satir</span></div>
+          <div class="hud-reserve"><span>HUD &mdash; 3 lines</span></div>
         </div>
       </div>
       <div class="transport">
-        <button id="play">Duraklat</button>
-        <input type="range" id="scrub" min="0" max="7" step="1" value="0" aria-label="Kare secici">
-        <span class="readout" id="readout">kare 1 / 8</span>
+        <button id="play">Pause</button>
+        <input type="range" id="scrub" min="0" max="7" step="1" value="0" aria-label="Frame selector">
+        <span class="readout" id="readout">frame 1 / 8</span>
       </div>
     </div>
 
@@ -390,25 +390,25 @@ TEMPLATE = r"""<!doctype html>
       <p class="slug" id="sp-slug">&nbsp;</p>
       <p class="note" id="sp-note">&nbsp;</p>
       <dl class="facts">
-        <div class="fact"><dt>Kare</dt><dd id="sp-frames">&mdash;</dd></div>
-        <div class="fact"><dt>Kare basi</dt><dd id="sp-interval">&mdash;</dd></div>
-        <div class="fact"><dt>Tur suresi</dt><dd id="sp-loop">&mdash;</dd></div>
-        <div class="fact"><dt>Cizilen satir</dt><dd id="sp-rows">&mdash;</dd></div>
+        <div class="fact"><dt>Frames</dt><dd id="sp-frames">&mdash;</dd></div>
+        <div class="fact"><dt>Per frame</dt><dd id="sp-interval">&mdash;</dd></div>
+        <div class="fact"><dt>Loop</dt><dd id="sp-loop">&mdash;</dd></div>
+        <div class="fact"><dt>Rows drawn</dt><dd id="sp-rows">&mdash;</dd></div>
         <div class="fact"><dt>RGB LED</dt><dd><span class="led" id="sp-led" data-led="off">&mdash;</span></dd></div>
-        <div class="fact"><dt>Poz</dt><dd id="sp-hold">&mdash;</dd></div>
+        <div class="fact"><dt>Pose</dt><dd id="sp-hold">&mdash;</dd></div>
       </dl>
     </div>
   </div>
 
-  <h3>Butun maskotlar</h3>
-  <p>Hepsi kendi hizinda oynuyor. Birine tikla, yukaridaki ekrana gelsin.</p>
+  <h3>All poses</h3>
+  <p>Each plays at its own speed. Click one to load it into the screen above.</p>
   <div class="grid" id="grid"></div>
 
   <footer>
-    Bu sayfa <code>python3 tools/build_showcase.py</code> ile uretilir. Kaynak
-    <code>src/anims/*.h</code> ve <code>src/anims.h</code>, yani cihazin gercekten
-    calistirdigi veri &mdash; hiz, LED rengi ve kirpma satiri dahil her sey oradan
-    okunur. Sanat degisince sayfayi yeniden uret.
+    This page is generated by <code>python3 tools/build_showcase.py</code>. The
+    source is <code>src/anims/*.h</code> and <code>src/anims.h</code> &mdash; the
+    data the device actually runs, including speed, LED color and clip rows.
+    Regenerate the page whenever the art changes.
   </footer>
 </div>
 
@@ -427,21 +427,21 @@ function paint() {
   hero.src = cur.frames[frame];
   scrub.value = frame;
   readout.textContent = cur.frames.length > 1
-    ? "kare " + (frame + 1) + " / " + cur.frames.length
-    : "tek kare";
+    ? "frame " + (frame + 1) + " / " + cur.frames.length
+    : "single frame";
 }
 
 function start() {
   stop();
-  if (cur.frames.length < 2 || !cur.interval) { play.textContent = "Oynat"; return; }
+  if (cur.frames.length < 2 || !cur.interval) { play.textContent = "Play"; return; }
   timer = setInterval(() => { frame = (frame + 1) % cur.frames.length; paint(); }, cur.interval);
-  play.textContent = "Duraklat";
+  play.textContent = "Pause";
 }
-function stop() { clearInterval(timer); timer = null; play.textContent = "Oynat"; }
+function stop() { clearInterval(timer); timer = null; play.textContent = "Play"; }
 
 function select(a) {
   cur = a; frame = 0;
-  hero.alt = a.label + " pozu";
+  hero.alt = a.label + " pose";
   hero.style.setProperty("--x", a.x);
   hero.style.setProperty("--y", a.y);
   hero.style.setProperty("--sw", a.w * a.scale);
@@ -451,17 +451,17 @@ function select(a) {
   $("sp-label").textContent = a.label;
   $("sp-slug").textContent = "ANIM_" + a.name.toUpperCase();
   $("sp-note").textContent = a.note;
-  $("sp-frames").textContent = a.frames.length + (a.frames.length > 1 ? " kare" : " kare (statik)");
+  $("sp-frames").textContent = a.frames.length + (a.frames.length > 1 ? " frames" : " frame (static)");
   $("sp-interval").textContent = a.interval ? a.interval + " ms" : "—";
   $("sp-loop").textContent = a.interval
-    ? (a.interval * a.frames.length / 1000).toFixed(2).replace(".", ",") + " sn"
+    ? (a.interval * a.frames.length / 1000).toFixed(2) + " s"
     : "—";
   $("sp-rows").textContent = a.rows + " / " + a.full;
   const led = $("sp-led");
   led.dataset.led = a.na ? "na" : a.led;
   led.textContent = a.na ? "—"
-    : { off: "kapali", green: "yesil", blue: "mavi", cyan: "camgobegi" }[a.led];
-  $("sp-hold").textContent = a.na ? "—" : (a.transient ? "gecici" : "kalici");
+    : { off: "off", green: "green", blue: "blue", cyan: "cyan" }[a.led];
+  $("sp-hold").textContent = a.na ? "—" : (a.transient ? "transient" : "persistent");
 
   document.querySelectorAll(".card").forEach(c =>
     c.setAttribute("aria-pressed", String(c.dataset.name === a.name)));

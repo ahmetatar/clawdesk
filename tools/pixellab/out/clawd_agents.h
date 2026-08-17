@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_agents': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_agents': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_AGENTS_W 64
 #define CLAWD_AGENTS_H 64

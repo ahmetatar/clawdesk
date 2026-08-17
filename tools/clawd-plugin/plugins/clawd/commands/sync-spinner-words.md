@@ -1,29 +1,31 @@
 ---
-description: clawd cihazinin spinner kelime havuzunu Claude Code'un GERCEK listesiyle esitle (POST /words)
+description: Sync the clawd device's spinner word pool with Claude Code's real list (POST /words)
 ---
 
-clawd cihazinin spinner (dusunme/calisma) kelime havuzunu bu makinedeki Claude Code'un
-gercek listesiyle esitle.
+Sync the clawd device's spinner (thinking/working) word pool with the real list from
+the Claude Code installed on this machine.
 
-Once (istersen) onizle, sonra gonder:
+Preview first if you like, then send:
 
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/clawd-spinner-sync.sh" --preview`
 
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/clawd-spinner-sync.sh"`
 
-Eger `${CLAUDE_PLUGIN_ROOT}` cozulmezse, clawd plugin'inin `scripts/clawd-spinner-sync.sh`
-dosyasini bul ve calistir.
+If `${CLAUDE_PLUGIN_ROOT}` does not resolve, locate the clawd plugin's
+`scripts/clawd-spinner-sync.sh` and run that.
 
-Sonra kullaniciya sunlari soyle:
-- Cihazin spinner kelimeleri artik Claude Code'un GERCEK gerund havuzundan gelir
-  (or. "Cogitating...", "Herding...", "Combobulating..."). HUD ust satirinda gorunur.
-- **Kalicilik:** liste cihazin RAM'inde tutulur; **reboot'ta derleme-ici varsayilana
-  (spinner_words.h) doner**. Ozel listen varsa reboot sonrasi bu komutu tekrar calistir.
-- **Ozellestirme:** `~/.claude/clawd-spinner-words.txt` olusturursan (her satir bir
-  kelime; `#` yorum, bos satir atlanir) sync o dosyayi KAYNAK alir. Dosya yoksa kurulu
-  Claude Code ikilisinden canli cikarilir (surumden bagimsiz).
-- Cihaz `clawd.local`'de degilse `CLAWD_HOST`'u proje `.claude/settings.local.json` env
-  blogundan ver (or. `"CLAWD_HOST": "192.168.1.201"`).
-- Compile-time varsayilani tazelemek (yeni CC surumu) icin:
+Then tell the user:
+- The device's spinner words now come from Claude Code's real gerund pool
+  (e.g. "Cogitating...", "Herding...", "Combobulating..."), shown on the HUD's top line.
+- **Persistence:** the list lives in the device's RAM and **reverts to the compiled-in
+  default (spinner_words.h) on reboot**. Re-run this command after a reboot to restore
+  a custom list.
+- **Customisation:** if you create `~/.claude/clawd-spinner-words.txt` (one word per
+  line; `#` comments and blank lines are skipped), the sync uses that file as its
+  source. Without it, the words are extracted live from the installed Claude Code
+  binary, independent of version.
+- If the device is not at `clawd.local`, set `CLAWD_HOST` in the project's
+  `.claude/settings.local.json` env block (e.g. `"CLAWD_HOST": "192.168.1.201"`).
+- To refresh the compile-time default (new CC release):
   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/clawd-spinner-extract.sh" --header > src/spinner_words.h`
-  ve firmware'i yeniden flash'la.
+  then reflash the firmware.

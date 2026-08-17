@@ -1,16 +1,17 @@
 // clawd examples — 01 Hello World
-// CYD / ESP32-2432S028R: ekrana yazı bas, arka planda renk testi yap.
-// Amaç: kart programlanıyor mu + TFT pinleri doğru mu? Bunu geçersen en zor tuzağı aştın.
+// CYD / ESP32-2432S028R: draw text on the display.
+// Goal: does the board program, and are the TFT pins right? Clearing this clears
+// the hardest trap.
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 
-TFT_eSPI tft = TFT_eSPI();  // pinler platformio.ini build_flags'ten gelir
+TFT_eSPI tft = TFT_eSPI();  // pins come from build_flags in platformio.ini
 
-// Ekrana ortalanmış tek satır yaz
+// Draw one centred line
 static void drawCentered(const char *text, int y, uint16_t color, uint8_t font) {
   tft.setTextColor(color, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);  // ortala (Middle-Center)
+  tft.setTextDatum(MC_DATUM);
   tft.drawString(text, tft.width() / 2, y, font);
 }
 
@@ -18,24 +19,24 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("[clawd] 01-hello-world basliyor...");
+  Serial.println("[clawd] 01-hello-world starting...");
 
   tft.init();
-  tft.setRotation(0);  // 0/1/2/3 dene: ekran yan/ters gelirse burayi degistir
+  tft.setRotation(0);  // try 0/1/2/3 if the screen is sideways or upside down
   tft.fillScreen(TFT_BLACK);
 
-  Serial.printf("[clawd] ekran: %d x %d\n", tft.width(), tft.height());
+  Serial.printf("[clawd] display: %d x %d\n", tft.width(), tft.height());
 
-  // Ana mesaj
+  // main message
   drawCentered("Hello, clawd!", 120, TFT_GREEN, 4);
-  drawCentered("CYD ekran calisiyor", 160, TFT_WHITE, 2);
+  drawCentered("CYD display works", 160, TFT_WHITE, 2);
   drawCentered("ESP32-2432S028R", 185, TFT_DARKGREY, 2);
 
-  Serial.println("[clawd] yazi basildi. setup bitti.");
+  Serial.println("[clawd] text drawn, setup done.");
 }
 
 void loop() {
-  // Kanit: ekran gercekten suruluyor mu? Kenarda nabiz gibi atan bir nokta.
+  // Proof the display is really being driven: a dot pulsing in the corner.
   static bool on = false;
   static uint32_t last = 0;
   uint32_t now = millis();

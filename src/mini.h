@@ -1,18 +1,13 @@
 #pragma once
-// MiniFleet — Claude Code ALT-AGENT gorsellestirme (ANIM_AGENTS preset'i ile birlikte).
+// MiniFleet — subagent visualization, shown together with ANIM_AGENTS.
 //
-// Claude bir alt-agent (Task/Agent) actiginda buyuk clawd YUKARI kayip ASAGI bakar
-// (ANIM_AGENTS) ve en ALTTA, TEK SIRA halinde 4 kucuk clawd BIRDEN belirir.
-// Her mini sabit yerinde SAGA-SOLA yumusakca sallanir (yon'e gore aynalanir).
-// Alt-agent(ler) bitip is bitince (main.cpp'de gercek sayac 0'a inince) 4'u de kaybolur.
-// (Kac gercek alt-agent olursa olsun ekranda hep 4 mini gosterilir — sabit sira.)
+// When Claude spawns a subagent, the big clawd shifts up and looks down while a
+// row of 4 minis appears along the bottom, each swaying left/right in place
+// (mirrored to match its direction). They all disappear when the work finishes.
+// The count is always 4, regardless of how many subagents are really running.
 //
-// CAKISMA YOK: ANIM_AGENTS anim'i yalniz UST bandi cizer (main.cpp animPushRows=33
-// -> ekran y[24,123)). Mini sirasi bunun ALTINDA, sabit fume (BG) zeminde (y=SIRAY),
-// ve HUD'un 3 satirlik alt bandinin (y[177,240)) DA USTUNDE kalir (alt kenar 170).
-// Seffaflik/flicker derdi yok: mini tam kare cizilir, eski konum BG ile silinir.
-//
-// RANDOM YOK: tum hareket deterministik sinus salinimidir (sakin, ongorulebilir).
+// The row sits between the clipped ANIM_AGENTS band (y[24,123)) and the HUD
+// (y[177,240)), so nothing overlaps. Motion is a deterministic sine sway.
 
 #include <TFT_eSPI.h>
 #include "config.h"
@@ -20,7 +15,7 @@
 
 class MiniFleet {
  public:
-  static const int MAXM = 4;            // en fazla 4 mini, tek sira
+  static const int MAXM = 4;            // one row of 4
 
   void begin(TFT_eSPI *tft) {
     _tft = tft;
@@ -29,14 +24,14 @@ class MiniFleet {
     _shown = false;
   }
 
-  // Alt-agent(ler) basladi: 4 mini sirasini BIRDEN ac (idempotent — zaten aciksa dokunma).
+  // Subagent started: show the whole row (idempotent).
   void showAll() {
     if (_shown) return;
     for (int i = 0; i < MAXM; i++) _spawn(i);
     _shown = true;
   }
 
-  // Is bitti / oturum sinirlari: 4 mini'yi de topla (BG ile sil, kalinti birakma).
+  // Work finished: erase the row with BG, leaving no residue.
   void clear() {
     for (int i = 0; i < MAXM; i++) {
       if (_m[i].active && _m[i].drawn) _fillRect(_m[i].px, _m[i].py, MW, MH);
@@ -47,12 +42,12 @@ class MiniFleet {
 
   bool any() const { return _shown; }
 
-  // Tam ekran tazelendiginde (uyanma fillScreen) cagir: eski "cizildi" izini unut.
+  // Call after a full-screen refresh so the "already drawn" state is forgotten.
   void markAllDirty() {
     for (int i = 0; i < MAXM; i++) _m[i].drawn = false;
   }
 
-  // Her loop cagrilir; kendi (sakin) hizinda gunceller+cizer. Uykuda cagrilmaz.
+  // Called every loop; updates and draws at its own pace. Not called while asleep.
   void tick() {
     if (!_shown) return;
     uint32_t now = millis();
@@ -64,29 +59,27 @@ class MiniFleet {
  private:
   struct Mini {
     bool     active;
-    bool     drawn;      // en az bir kez cizildi mi (erase icin px gecerli mi)
+    bool     drawn;      // drawn at least once, so px/py are valid for erasing
     bool     faceLeft;
-    int8_t   slot;       // sira icindeki yer (0=en sol)
-    uint16_t ph;         // salinim fazi (derece)
-    int      px, py;     // en son cizilen tam-sayi konum (erase icin)
+    int8_t   slot;       // position in the row (0 = leftmost)
+    uint16_t ph;         // sway phase (degrees)
+    int      px, py;     // last drawn position (for erasing)
   };
 
   static constexpr int MW = CLAWD_MINI_W, MH = CLAWD_MINI_H;   // 40x40
 
-  // Tek sira: 4 mini ekranin altinda, buyuk clawd'in ALTINDA, ortalanmis ve simetrik.
-  // Sol-ust kose ev konumlari (spr 40px, aralik 66 -> satir 41..279, 160 etrafinda ortali).
-  static constexpr int ROW_Y  = 130;                 // sabit satir y'si (alt kenar 170 < HUD 177)
-  static constexpr int SWAY   = 7;                   // saga-sola salinim genligi (px)
-  static const int HOME_X[MAXM];                     // her slotun ev x'i (sol kenar)
+  static constexpr int ROW_Y  = 130;                 // row y (bottom edge 170 < HUD 177)
+  static constexpr int SWAY   = 7;                   // sway amplitude (px)
+  static const int HOME_X[MAXM];                     // home x per slot (left edge)
   static const uint32_t TICK_MS  = 40;               // ~25 fps
-  static const uint16_t PH_STEP  = 4;                // faz artisi/tick -> ~3.6 sn tam dongu
+  static const uint16_t PH_STEP  = 4;                // ~3.6 s per full cycle
 
   void _spawn(int slot) {
     Mini &m = _m[slot];
     m.active = true;
     m.drawn  = false;
     m.slot   = slot;
-    m.ph     = (uint16_t)((slot * 90) % 360);        // slotlar arasi faz kaymasi -> dalga gorunumu
+    m.ph     = (uint16_t)((slot * 90) % 360);        // phase offset per slot -> wave
     m.faceLeft = false;
   }
 
@@ -95,14 +88,14 @@ class MiniFleet {
     float rad = m.ph * 0.01745329f;
     int nx = HOME_X[m.slot] + (int)lroundf(SWAY * sinf(rad));
     int ny = ROW_Y;
-    m.faceLeft = cosf(rad) < 0.0f;                   // hareket yonune gore aynala
+    m.faceLeft = cosf(rad) < 0.0f;                   // mirror to the direction of travel
 
     _drawSprite(nx, ny, m.faceLeft);
-    if (m.drawn && nx != m.px) _eraseTrail(m.px, nx, ny);   // yatay hareket -> ince yan seritler
+    if (m.drawn && nx != m.px) _eraseTrail(m.px, nx, ny);
     m.px = nx; m.py = ny; m.drawn = true;
   }
 
-  // Sprite'i tek satir tamponuyla ciz; faceLeft ise yatay aynala.
+  // Draw the sprite one row at a time, mirrored when faceLeft.
   void _drawSprite(int x, int y, bool flip) {
     uint16_t row[MW];
     for (int ry = 0; ry < MH; ry++) {
@@ -115,10 +108,10 @@ class MiniFleet {
 
   void _fillRect(int x, int y, int w, int h) { _tft->fillRect(x, y, w, h, _bg); }
 
-  // Yatay kayma: eski (ox) ile yeni (nx) arasindaki ORTUSMEYEN yan seridi BG ile sil.
+  // Erase the sliver the sprite no longer covers after a horizontal move.
   void _eraseTrail(int ox, int nx, int y) {
-    if (nx > ox)      _fillRect(ox, y, nx - ox, MH);          // saga gitti -> solda iz
-    else if (nx < ox) _fillRect(nx + MW, y, ox - nx, MH);     // sola gitti -> sagda iz
+    if (nx > ox)      _fillRect(ox, y, nx - ox, MH);          // moved right -> trail on the left
+    else if (nx < ox) _fillRect(nx + MW, y, ox - nx, MH);     // moved left -> trail on the right
   }
 
   TFT_eSPI *_tft = nullptr;
@@ -128,5 +121,5 @@ class MiniFleet {
   uint32_t  _lastTick = 0;
 };
 
-// 4 mini ev x'leri (sol kenar): 41,107,173,239 -> satir 160 etrafinda ortali/simetrik.
+// Home x per mini, centred symmetrically around x=160.
 const int MiniFleet::HOME_X[MiniFleet::MAXM] = { 41, 107, 173, 239 };

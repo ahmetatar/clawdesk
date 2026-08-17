@@ -1,9 +1,9 @@
-# PlatformIO build çıktıları
+# PlatformIO build output
 .pio/
 .pioenvs/
 .piolibdeps/
 
-# Sırlar — WiFi şifresi, API key vb. ASLA commit edilmez
+# Secrets — WiFi password, API keys. Never committed.
 secrets.h
 secrets.sh
 *.key
@@ -15,11 +15,11 @@ secrets.sh
 # macOS
 .DS_Store
 
-# Yerel test artıkları
+# Local test artifacts
 _clawd_writetest.txt
 *.pem
 
-# Claude Code yerel plugin etkinleştirmesi (kişisel, paylaşılmaz)
+# Claude Code local plugin activation (personal, not shared)
 .claude/settings.local.json
 
 # Python

@@ -1,41 +1,43 @@
 # 01 — Hello World
 
-CYD / ESP32-2432S028R ekranına yazı basan ilk proje. Rehberdeki **Adım 3.2 ("İlk ışık")**
-karşılığı. Hiç clawd mantığı yok; tek soru: **kart programlanıyor mu, ekran açılıyor mu?**
+The first project: drawing text on the CYD / ESP32-2432S028R display. This is
+**step 3.2 ("first light")** from the guide. No clawd logic at all; the only
+question is: **does the board program, and does the display come up?**
 
-## Çalıştır
+## Run
 
 ```bash
 cd examples/01-hello-world
 
-# Derle
+# build
 pio run
 
-# Yükle + seri monitörü aç
+# upload and open the serial monitor
 pio run -t upload && pio device monitor
 ```
 
-> `pio` komutu yoksa: VS Code + PlatformIO eklentisi kur, ya da
+> If you don't have `pio`: install VS Code + the PlatformIO extension, or
 > `pip install platformio`.
 
-## Başarı kriteri
+## Success criteria
 
-- Ekranda yeşil **"Hello, clawd!"** + altında beyaz açıklama yazısı.
-- Sağ üst köşede yarım saniyede bir yanıp sönen kırmızı nokta (heartbeat).
-- Seri monitörde (115200 baud) `[clawd] ekran: 240 x 320` ve `heartbeat on/off`.
+- A green **"Hello, clawd!"** on screen with white explanatory text below it.
+- A red dot blinking twice a second in the top-right corner (heartbeat).
+- `[clawd] display: 240 x 320` and `heartbeat on/off` in the serial monitor
+  (115200 baud).
 
-## Sorun giderme
+## Troubleshooting
 
-| Belirti | İlk bakılacak yer |
+| Symptom | Where to look first |
 |---|---|
-| Ekran tamamen **beyaz / siyah**, yazı yok | `platformio.ini`'deki `TFT_*` pinleri — kart revizyonun farklı olabilir |
-| Yazı var ama **renkler ters** (yeşil↔kırmızı) | `-D TFT_RGB_ORDER=TFT_BGR` satırını aç |
-| Görüntü **negatif / soluk** | `-D TFT_INVERSION_ON=1` satırını aç |
-| Ekran **yan / ters** duruyor | `main.cpp` içinde `tft.setRotation(0)` → 1/2/3 dene |
-| Port bulunamadı / yüklenmiyor | `ls /dev/cu.*` ile portu gör; CH340/CP2102 sürücüsü gerekebilir |
-| Arka ışık yanmıyor | `-D TFT_BL=21` ve `-D TFT_BACKLIGHT_ON=HIGH` doğru mu |
+| Screen entirely **white or black**, no text | the `TFT_*` pins in `platformio.ini` — your board revision may differ |
+| Text appears but the **colours are swapped** (green↔red) | uncomment `-D TFT_RGB_ORDER=TFT_BGR` |
+| The image looks **inverted / washed out** | uncomment `-D TFT_INVERSION_ON=1` |
+| The screen is **sideways or upside down** | try `tft.setRotation(0)` → 1/2/3 in `main.cpp` |
+| No port found / upload fails | check `ls /dev/cu.*`; you may need the CH340/CP2102 driver |
+| The backlight stays off | verify `-D TFT_BL=21` and `-D TFT_BACKLIGHT_ON=HIGH` |
 
-## Sonraki adım
+## Next step
 
-Bu çalıştıysa en zor tuzağı aştın. Sıradakiler `examples/` altında:
-`02-blink-rgb` (RGB LED), `03-ldr` (ışık sensörü), `04-touch` (dokunmatik + kalibrasyon).
+If this worked, you have cleared the hardest trap. Next under `examples/`:
+`02-blink-rgb` (RGB LED), `03-ldr` (light sensor), `04-touch` (touch + calibration).

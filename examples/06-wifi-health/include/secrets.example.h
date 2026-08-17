@@ -1,6 +1,6 @@
 #pragma once
-// KULLANIM: bu dosyayi 'secrets.h' olarak kopyala ve kendi 2.4GHz WiFi bilgilerini yaz.
+// Usage: copy this file to 'secrets.h' and fill in your own 2.4GHz WiFi details.
 //   cp secrets.example.h secrets.h
-// secrets.h .gitignore'da -> sifre repoya girmez.
-#define WIFI_SSID "WIFI_ADIN"
-#define WIFI_PASS "WIFI_SIFREN"
+// secrets.h is gitignored, so the password never enters the repo.
+#define WIFI_SSID "YOUR_WIFI_NAME"
+#define WIFI_PASS "YOUR_WIFI_PASSWORD"

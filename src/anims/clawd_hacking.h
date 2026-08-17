@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_hacking': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_hacking': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_HACKING_W 64
 #define CLAWD_HACKING_H 64

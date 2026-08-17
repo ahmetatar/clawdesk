@@ -1,7 +1,7 @@
 {
   "name": "clawd",
   "version": "1.0.8",
-  "description": "clawd CYD maskotunu Claude Code hook olaylariyla surer (POST /e -> clawd.local): think / hacking / happy / oops / idle + alt-agent (Task/SubagentStop) icin AGENTS pozu + 4 mini clawd. Ayrica statusLine ozetini cihaz HUD ust bandina yansitir (POST /status; /clawd:clawd-statusline). Spinner kelime havuzunu Claude Code'un gercek listesiyle esitler (POST /words; /clawd:sync-spinner-words).",
+  "description": "Drives the clawd CYD mascot from Claude Code hook events (POST /e): think / hacking / happy / oops / idle, plus the agents pose and mini clawds for subagents. Also mirrors the statusLine summary to the device HUD (POST /status; /clawd:clawd-statusline) and syncs the spinner word pool with Claude Code's real list (POST /words; /clawd:sync-spinner-words).",
   "author": { "name": "Ahmet Atar" },
   "homepage": "https://github.com/ahmetatar/clawd-dashboard"
 }

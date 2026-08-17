@@ -1,127 +1,116 @@
 #pragma once
-// clawd ana uygulama — tum ayarlanabilir sabitler tek yerde.
+// clawd — all tunable constants in one place.
 
-// ---- pinler ----
-constexpr int PIN_BL   = 21;   // arka isik (LEDC PWM ile suruyoruz)
-constexpr int LED_G    = 16;   // RGB yesil (active-low)
-constexpr int LED_B    = 17;   // RGB mavi  (active-low)  — kirmizi (GPIO4) bu kartta olu
-constexpr int T_CLK    = 25;   // dokunmatik (HSPI)
+// ---- pins ----
+constexpr int PIN_BL   = 21;   // backlight (driven by LEDC PWM)
+constexpr int LED_G    = 16;   // RGB green (active-low)
+constexpr int LED_B    = 17;   // RGB blue  (active-low) — red (GPIO4) is dead on this board
+constexpr int T_CLK    = 25;   // touch (HSPI)
 constexpr int T_CS     = 33;
 constexpr int T_MOSI   = 32;
 constexpr int T_MISO   = 39;
 
-// ---- ekran / animasyon ----
-constexpr int ANIM_W   = 64;   // tum animasyonlar 64x64
+// ---- display / animation ----
+constexpr int ANIM_W   = 64;   // every animation is 64x64
 constexpr int ANIM_H   = 64;
-constexpr int ANIM_S   = 3;    // olcek: 64*3 = 192 px
-constexpr int HOLD_MS  = 4000; // gecici ifadeler (happy/oops) sonrasi idle'a donus
+constexpr int ANIM_S   = 3;    // scale: 64*3 = 192 px
+constexpr int HOLD_MS  = 4000; // transient moods (happy/oops) return to idle after this
 
-// ---- zemin rengi (letterbox + animasyon frame arka plani) ----
-// FUME SIYAH: tam siyah degil, hafif serin koyu kul. Turuncu clawd'i one cikarir.
-// DIKKAT: tools/pixellab/{03_png_to_header.py, clawd_anim.py} BG ile AYNI olmali,
-// yoksa fume letterbox uzerinde eski renkte kare kalir. Degistirince header'lari
-// yeniden uret (python3 03_png_to_header.py out/anim_<ad> clawd_<ad>) + src/anims'e kopyala.
+// ---- background (letterbox + animation frame background) ----
+// Smoky black, not pure black — makes the orange clawd pop.
+// Must match BG in tools/pixellab/{03_png_to_header.py, clawd_anim.py}; if you
+// change it, regenerate the headers and copy them into src/anims/.
 constexpr uint8_t BG_R = 36;
 constexpr uint8_t BG_G = 39;
 constexpr uint8_t BG_B = 44;
 
-// 8-8-8 -> RGB565 (statik baslatma icin; tft.color565 uye fonksiyon, constexpr degil).
+// 8-8-8 -> RGB565 (tft.color565 is a member function, not constexpr).
 #ifndef RGB565
 #define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 #endif
 
-// clawd maskotunun baskin turuncusu (out/clawd_south.png'den orneklendi) — HUD
-// aksiyon metni bu sabit renkte yazilir (mood'a gore degil).
+// clawd's dominant orange — HUD action text always uses it, regardless of mood.
 constexpr uint16_t CLAWD_ORANGE = RGB565(213, 82, 56);
 
 // ---- WiFi ----
-// connectWiFi basarisiz olursa ekranda bu kadar saniye geri sayilir, sonra ESP.restart()
-// ile bastan denenir (router gec acilmis olabilir). Kalici sorunda (yanlis sifre) dongude
-// kalir; kullanici install.sh ile duzeltip yeniden flaslar.
+// On a failed connect, count down this many seconds on screen and ESP.restart().
 constexpr int WIFI_RETRY_SECS = 10;
 
-// ---- guc yonetimi ----
-// idle = son event/dokunmadan bu yana gecen sure.
-constexpr uint32_t T_DIM_MS   = 30000;  // 30 sn: arka isigi kis
-constexpr uint32_t T_SLEEP_MS = 120000; // 120 sn: ekrani sondur + uyku
+// ---- power management ----
+// idle = time since the last event or touch.
+constexpr uint32_t T_DIM_MS   = 30000;  // dim the backlight
+constexpr uint32_t T_SLEEP_MS = 120000; // blank the screen and sleep
 
-// Claude MESGULKEN (olay akisi basladi, Stop gelmedi) uyku/kisma TAMAMEN kapali:
-// uzun bir tool (build/test) calisirken cihaz uyumaz. GUVENLIK: Stop olayi hic
-// gelmezse bu kadar OLAYSIZ sureden sonra normal idle'a don (ekran takili kalmasin).
-// Uzun tool'lardan buyuk olmali (build/test'ler dakikalar surebilir).
-constexpr uint32_t T_BUSY_MAX_MS = 600000;  // 10 dk emniyet tavani
+// While Claude is busy (events started, no Stop yet) dim/sleep is disabled so a
+// long build/test never puts the device to sleep. Safety cap in case Stop never
+// arrives — must exceed the longest realistic tool run.
+constexpr uint32_t T_BUSY_MAX_MS = 600000;  // 10 min
 
-// context (ctx%) bu esigi (statusLine ile AYNI "kirmizi" esik) gecince, aktif-bosta
-// (ANIM_IDLE) iken clawd baglam-doluluk gostergesine (ANIM_BRAIN_FULL) gecer — DIM/
-// SLEEP'e gecmeden ONCE bir uyari katmani. Esik altina donunce idle'a geri doner.
+// Above this context usage, an idle clawd switches to ANIM_BRAIN_FULL as a
+// warning layer (same "red" threshold the statusLine uses).
 constexpr int CTX_BRAIN_THRESH = 80;
 
-// arka isik parlaklik seviyeleri (8-bit LEDC duty, 0..255)
-constexpr uint8_t  BL_FULL = 255;       // aktif: tam parlaklik
-constexpr uint8_t  BL_DIM  = 28;        // ~%11: kisik ama okunur/canli
-constexpr uint8_t  BL_OFF  = 0;         // uyku: kapali
+// backlight levels (8-bit LEDC duty, 0..255)
+constexpr uint8_t  BL_FULL = 255;
+constexpr uint8_t  BL_DIM  = 28;        // ~11%: dim but still readable
+constexpr uint8_t  BL_OFF  = 0;
 
-// LEDC (donanim PWM) — arka isik
-constexpr int      BL_CH   = 0;         // LEDC kanali
-constexpr int      BL_FREQ = 20000;     // 20 kHz: duyulabilir cizirti olmaz
-constexpr int      BL_RES  = 8;         // 8-bit cozunurluk (0..255)
+// LEDC (hardware PWM) — backlight
+constexpr int      BL_CH   = 0;
+constexpr int      BL_FREQ = 20000;     // 20 kHz: above audible whine
+constexpr int      BL_RES  = 8;         // 8-bit (0..255)
 
-// yumusak fade: her adimda duty bu kadar degisir, RAMP_MS periyotla
+// soft fade: duty moves BL_STEP every BL_RAMP_MS (~170 ms for a full fade)
 constexpr uint8_t  BL_STEP     = 12;
-constexpr uint32_t BL_RAMP_MS  = 8;     // ~ (255/12)*8 ≈ 170 ms tam fade
+constexpr uint32_t BL_RAMP_MS  = 8;
 
-// uyku CPU frekansi (240 -> 80 MHz: WiFi icin min guvenli, ~yari guc)
+// sleep CPU frequency (80 MHz is the minimum safe for WiFi, ~half the power)
 constexpr int      CPU_HZ_ACTIVE = 240;
 constexpr int      CPU_HZ_SLEEP  = 80;
 
-// ---- dokunmatik jestleri (gidiklama / oksama) ----
-// XPT2046 getPoint() HAM ADC dondurur (~200..3900). Cift-dokunus = iki kisa tap;
-// surtme/oksama = tek dokunusta genis yatay x hareketi. Esikler ham ADC birimidir.
-constexpr uint32_t TAP_MAX_MS       = 350;  // tek temas bundan kisaysa (+az hareket) = "tap"
-constexpr uint32_t DOUBLETAP_MS     = 500;  // iki tap arasi bundan az ise = cift-tap (gidiklama)
-constexpr int      STROKE_MIN_RAW   = 400;  // tek temasta x bu kadar degisirse = surtme (oksama)
-constexpr uint32_t TOUCH_SETTLE_MS  = 25;   // temas basindaki ADC gurultusunu atla (tap araligi sismesin)
-constexpr uint32_t TOUCH_RELEASE_MS = 55;   // bu kadar temassizlik = GERCEK birakma. Kisa basinc
-                                            // dususu drag'i bolmez; deliberate cift-tap (gap>100ms) birlesmez.
+// ---- touch gestures (tickle / pet) ----
+// XPT2046 getPoint() returns RAW ADC (~200..3900), so these thresholds are in
+// raw units. Double-tap = two short taps; petting = one contact with a wide
+// horizontal sweep.
+constexpr uint32_t TAP_MAX_MS       = 350;  // short contact with little movement = tap
+constexpr uint32_t DOUBLETAP_MS     = 500;  // gap below this between taps = double-tap
+constexpr int      STROKE_MIN_RAW   = 400;  // x travel in one contact = stroke
+constexpr uint32_t TOUCH_SETTLE_MS  = 25;   // skip ADC noise at contact start
+constexpr uint32_t TOUCH_RELEASE_MS = 55;   // no contact this long = real release
 
-// ---- dokunmatik kalibrasyon (ham ADC -> ekran px, rotation 1) ----
-// 04-touch orneginde 4 koseye dokunarak dogrulanan degerler. Kose-buton tespiti
-// icin kabaca dogru olmasi yeter (zone genis tutulur).
+// ---- touch calibration (raw ADC -> screen px, rotation 1) ----
+// Verified against the four corners in example 04-touch. Only needs to be
+// roughly right — the corner button zone is generous.
 constexpr int RAW_X_MIN = 1800, RAW_X_MAX = 3300;
 constexpr int RAW_Y_MIN = 1600, RAW_Y_MAX = 3300;
 
-// ---- gorunum degistirici (sag-ust kose butonu) ----
-// Sag-ust kosede BASLAYAN kisa dokunus normal <-> usage (kota) ekranini degistirir.
-// Kose'de baslayan temas jest makinesine (tickle/love) GIRMEZ.
-constexpr int      UI_BTN_W        = 90;   // dokunma bolgesi genisligi (ekran px, sagdan)
-constexpr int      UI_BTN_H        = 56;   // yuksekligi (ustten)
+// ---- view switcher (top-right corner button) ----
+// A short touch STARTING in the top-right corner toggles mascot <-> usage view.
+// Contacts that start there never enter the gesture machine.
+constexpr int      UI_BTN_W        = 90;   // touch zone width (from the right edge)
+constexpr int      UI_BTN_H        = 56;   // height (from the top)
 constexpr uint32_t UI_TOGGLE_DEBOUNCE_MS = 450;
 
-// ---- usage (kota) ekrani ----
-// Ekran goruntusundeki Claude kota gorunumu: saat + 2 kart (Current/Weekly)
-// + progress bar + "Resets in ..." + altta spinner kelimesi.
-constexpr uint16_t UI_CARD_BG    = RGB565(56, 56, 63);    // kart zemini (koyu gri)
-constexpr uint16_t UI_PILL_BG    = RGB565(92, 87, 110);   // "Current/Weekly" rozeti (mor-gri)
-constexpr uint16_t UI_BAR_TRACK  = RGB565(74, 68, 94);    // bar yatagi (mor)
-constexpr uint16_t UI_BAR_FILL   = RGB565(238, 166, 100); // bar dolgusu (acik turuncu)
-constexpr uint16_t UI_TEXT_MAIN  = RGB565(255, 255, 255); // %'ler + saat (beyaz)
-constexpr uint16_t UI_TEXT_SOFT  = RGB565(222, 222, 228); // "Resets in ..." (kirik beyaz)
+// ---- usage (quota) view ----
+// Clock + two cards (Current/Weekly) + progress bar + "Resets in ..." + spinner.
+constexpr uint16_t UI_CARD_BG    = RGB565(56, 56, 63);    // card background
+constexpr uint16_t UI_PILL_BG    = RGB565(92, 87, 110);   // "Current/Weekly" badge
+constexpr uint16_t UI_BAR_TRACK  = RGB565(74, 68, 94);
+constexpr uint16_t UI_BAR_FILL   = RGB565(238, 166, 100);
+constexpr uint16_t UI_TEXT_MAIN  = RGB565(255, 255, 255); // percentages + clock
+constexpr uint16_t UI_TEXT_SOFT  = RGB565(222, 222, 228); // "Resets in ..."
 
-// NTP saat (usage ekranindaki buyuk saat). Istanbul: UTC+3, DST yok.
+// NTP clock (the big clock on the usage view). Istanbul: UTC+3, no DST.
 constexpr long CLOCK_TZ_OFFSET_S = 3 * 3600;
 
-// ---- ag / statik IP ----
-// Bu cihaz bir TP-Link menzil genisletici (TL-WA854RE) ARKASINDA calisiyor;
-// ana router (192.168.1.1) clawd'in gercek MAC'ini GORMEZ (extender proxy ARP
-// yapar) -> router tarafinda DHCP reservation ISE YARAMAZ. Cozum: cihaz IP'yi
-// KENDISI sabitler. Secilen IP ana router'in DHCP havuzunun (192.168.1.100-.200)
-// DISINDA olmali ki router baskasina dagitip cakismasin. .201 = havuz disi, ayni
-// LAN /24. CLAWD_HOST (PC hook + statusLine) bu IP'ye ayarlanmali.
-// BASKA bir agda kullanacaksan CLAWD_STATIC_IP'yi 0 yap -> normal DHCP'ye doner.
+// ---- network / static IP ----
+// The device sits behind a range extender, so the main router never sees its
+// real MAC and a DHCP reservation would not stick — the device pins its own IP
+// instead. Keep it outside the router's DHCP pool to avoid collisions, and set
+// CLAWD_HOST (PC hook + statusLine) to the same address.
+// Set CLAWD_STATIC_IP to 0 to fall back to DHCP.
 //
-// NOT: install.sh bu satiri OTOMATIK yeniden yazar — /24'un son adresini onerir
-// (192.168.1.254) ve Enter'a basilirsa onu yazar. Buradaki .201'i korumak icin
-// kurulum sorusunda IP'yi ELLE .201 girmek gerekir.
+// install.sh rewrites these lines automatically from the detected network.
 #define CLAWD_STATIC_IP 1
 constexpr uint8_t IP_LOCAL[4]   = {192, 168, 1, 201};
 constexpr uint8_t IP_GATEWAY[4] = {192, 168, 1, 1};

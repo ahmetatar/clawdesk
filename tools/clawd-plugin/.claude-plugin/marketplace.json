@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "clawd",
-  "description": "clawd — fiziksel Claude Code maskotu (CYD). Hook olaylarini cihaza yansitan plugin.",
+  "description": "clawd — a physical Claude Code mascot on a CYD board. The plugin that mirrors hook events to the device.",
   "owner": { "name": "Ahmet Atar" },
   "plugins": [
     {
       "name": "clawd",
-      "description": "Claude Code hook olaylarini clawd cihazina (clawd.local) yollar; maskot think/hacking/happy/oops/idle ile tepki verir.",
+      "description": "Sends Claude Code hook events to the clawd device; the mascot reacts with think/hacking/happy/oops/idle.",
       "source": "./plugins/clawd",
       "category": "productivity"
     }

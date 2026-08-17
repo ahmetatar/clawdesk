@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-# Baglam-dolu (ANIM_BRAIN_FULL) ve compact (ANIM_COMPACT) icin PixelLab beyin sprite'i.
-# clawd deterministik kalir; PixelLab yalniz "beyin" elementini uretir (hibrit recete,
-# bkz. 07_heart.py). Cikti: out/brain.png (duz zeminli) -> clawd_anim.py kose renginden
-# key-out ile transparanlastirir, sonra bardak-gibi dolum efekti icin maske olarak kullanir.
+# Generate the brain sprite used by ANIM_BRAIN_FULL and ANIM_COMPACT. Same hybrid
+# recipe as 07_heart.py. Output: out/brain.png on a flat background, which
+# clawd_anim.py keys out by corner color and then uses as a fill mask.
 #   source tools/pixellab/secrets.sh && SSL_CERT_FILE=~/.platformio/system-ca-bundle.pem \
 #     python3 tools/pixellab/08_brain.py [SIZE]
 import sys, os, lib
@@ -10,7 +9,7 @@ import sys, os, lib
 size = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 os.makedirs("out", exist_ok=True)
 
-print(f"bitforge beyin -> {size}x{size}")
+print(f"bitforge brain -> {size}x{size}")
 res = lib.post("/create-image-bitforge", {
     "description": "simple flat clipart icon of a pink human brain, side profile silhouette, "
                    "instantly recognizable brain shape like a logo icon, only 4-5 big smooth "
@@ -23,4 +22,4 @@ res = lib.post("/create-image-bitforge", {
     "image_size": {"width": size, "height": size},
 })
 lib.save_image_field(res["image"], "out/brain.png")
-print("maliyet $", res.get("usage", {}).get("usd"))
+print("cost $", res.get("usage", {}).get("usd"))

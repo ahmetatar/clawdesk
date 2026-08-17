@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-# Rig'li clawd karakterine TUTARLI animasyon uretir (/characters/animations).
-# mode=template -> hazir iskelet sablonu (en tutarli). mode=v3 -> serbest aksiyon.
-# Frame'ler out/anim_<ad>/frame_*.png olarak kaydedilir (03_png_to_header ile header'a).
+# Generate a consistent animation from the rigged clawd character
+# (/characters/animations). mode=template uses a built-in skeleton template (most
+# consistent); mode=v3 takes a free-form action. Frames land in
+# out/anim_<name>/frame_*.png, ready for 03_png_to_header.
 #
 #   source secrets.sh
 #   python3 05_char_anim.py idle    template breathing-idle south
@@ -10,12 +11,12 @@ import os, sys, json, math, base64, urllib.request, lib
 from PIL import Image
 
 def save_frame(field, fp):
-    """Character API 'image' alani HAM RGBA base64 dondurur (PNG degil). PNG'ye cevir."""
+    """The Character API returns raw RGBA base64, not PNG. Convert it."""
     raw = base64.b64decode(field["base64"].split(",", 1)[-1])
     w = field.get("width"); h = field.get("height")
-    if not (w and h):                      # boyut yoksa kareden tahmin et
+    if not (w and h):                      # no size given: assume a square
         side = int(round(math.sqrt(len(raw) // 4))); w = h = side
-    if raw[:8] == b"\x89PNG\r\n\x1a\n":     # zaten PNG ise oldugu gibi yaz
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":     # already PNG: write as-is
         open(fp, "wb").write(raw); return
     Image.frombytes("RGBA", (w, h), raw).save(fp)
 
@@ -24,7 +25,7 @@ cid = open(os.path.join(HERE, "out", "character_id.txt")).read().strip()
 
 name   = sys.argv[1] if len(sys.argv) > 1 else "idle"
 mode   = sys.argv[2] if len(sys.argv) > 2 else "template"
-spec   = sys.argv[3] if len(sys.argv) > 3 else "breathing-idle"   # template_id ya da action
+spec   = sys.argv[3] if len(sys.argv) > 3 else "breathing-idle"   # template_id or action
 direction = sys.argv[4] if len(sys.argv) > 4 else "south"
 frames_n  = int(sys.argv[5]) if len(sys.argv) > 5 else 8
 
@@ -54,12 +55,12 @@ for old in glob.glob(os.path.join(outdir, "frame_*.png")):
 saved = 0
 for job in jobs:
     done = lib.poll_job(job, every=4, timeout=420)
-    # frame'ler nerede? once bilinen yerlere bak, yoksa yapiyi dok
+    # look in the known places; if nothing, dump the job structure
     lr = done.get("last_response") or {}
     imgs = lr.get("images") or done.get("images") or []
     urls = lr.get("image_urls") or done.get("image_urls") or []
     if not imgs and not urls:
-        print("  !! frame bulunamadi, job yapisi:")
+        print("  !! no frames found, job structure:")
         print("  keys:", list(done.keys()))
         print("  last_response keys:", list(lr.keys()) if isinstance(lr, dict) else lr)
         print(json.dumps(done, indent=2)[:1500])

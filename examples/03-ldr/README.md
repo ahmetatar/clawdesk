@@ -1,60 +1,61 @@
-# 03 — LDR (ışık sensörü)
+# 03 — LDR (light sensor)
 
-CYD'nin **dahili** LDR'sini GPIO34'ten okur. Rehberdeki **Adım 4.2** karşılığı.
-clawd'ın "oda karardı → uyku modu" özelliğinin temeli.
+Reads the CYD's **on-board** LDR from GPIO34. This is **step 4.2** from the guide,
+and the basis of clawd's "room went dark → sleep mode" feature.
 
-## Bağlantı
+## Wiring
 
-**Hiçbir şey bağlama.** LDR kartın üstünde dahili küçük turuncu/kahve bir bileşen.
-GPIO34 sadece-giriş (input-only) ADC pini.
+**Nothing to wire.** The LDR is a small orange/brown component on the board. GPIO34
+is an input-only ADC pin.
 
-## Çalıştır
+## Run
 
 ```bash
 cd examples/03-ldr
 pio run -t upload
 ```
 
-Sonra seri monitörü aç ve **sensörü elinle kapat** / oda lambasını değiştir; değerin
-oynadığını gör.
+Then open the serial monitor and **cover the sensor with your hand** or change the
+room lighting, and watch the value move.
 
-## Başarı kriteri
+## Success criteria
 
-- Seri monitörde sürekli `[clawd] LDR=NNNN -> aydinlik/KARANLIK` satırı.
-- Sensörü elinle kapatınca değer belirgin değişiyor.
-- Yeterince kararınca **mavi LED yanıyor** (uyku göstergesi).
+- A continuous `[clawd] LDR=NNNN -> light/DARK` line in the serial monitor.
+- The value changes noticeably when you cover the sensor.
+- Once it is dark enough, the **blue LED lights** (the sleep indicator).
 
-## Bu ünitedeki bilinen donanım notu
+## Known hardware note for this unit
 
-**Bu karttaki LDR yok / arızalı.** GPIO34 ışığa hiç tepki vermedi, sabit ~2425 okudu.
-LDR (GT36516) takılı değil veya açık olunca geriye yalnızca dahili 1M+1M bölücü kalır →
-sabit orta değer. Bu, ESP32-2432S028R'de **bilinen bir sorun** (forumda "LDR ... not
-working" başlıkları var). Bu kartın kırmızı LED'i de arızalı.
+**The LDR on this board is missing or faulty.** GPIO34 never responded to light,
+reading a constant ~2425. Either the LDR (GT36516) is not fitted or it is open, in
+which case only the internal 1M+1M divider remains, giving a fixed mid-scale value.
+This is a **known issue** on the ESP32-2432S028R (there are "LDR ... not working"
+threads on the forums). This board's red LED is faulty too.
 
-clawd için bloklayıcı değil: uyku modu **olaysızlık zamanlayıcısı** ile çalışır.
-İstersen GPIO35'e harici LDR bağla (`3.3V–LDR–G35–10kΩ–GND`, sonra `PIN_LDR=35`).
-GPIO21'i kullanma (arka ışık).
+It is not a blocker for clawd: sleep mode runs off an **inactivity timer** instead.
+If you want one, wire an external LDR to GPIO35 (`3.3V–LDR–G35–10kΩ–GND`) and set
+`PIN_LDR=35`. Don't use GPIO21 (that's the backlight).
 
-## Eşiği kendine göre ayarla
+## Calibrating the threshold
 
-ADC 12-bit → değer **0–4095** arası. CYD'de tipik olarak **aydınlık = düşük, karanlık =
-yüksek** değer verir (kartına göre ters olabilir).
+The ADC is 12-bit, so values run **0–4095**. On a CYD, bright light typically reads
+**low** and darkness **high** (it may be inverted on your board).
 
-1. Önce seri monitörden **aydınlık** ve **el ile kapalı (karanlık)** değerlerini oku.
-2. İkisinin ortasını `main.cpp` içindeki `DARK_THRESHOLD`'a yaz.
-3. Eğer ilişki ters çıktıysa (aydınlıkta yüksek değer), `loop()` içindeki
-   `val >= DARK_THRESHOLD` karşılaştırmasını `val <= DARK_THRESHOLD` yap.
+1. Read your **bright** and **hand-covered (dark)** values from the serial monitor.
+2. Put the midpoint into `DARK_THRESHOLD` in `main.cpp`.
+3. If the relationship turns out to be inverted (high values in bright light), change
+   the `val >= DARK_THRESHOLD` comparison in `loop()` to `val <= DARK_THRESHOLD`.
 
-## Sorun giderme
+## Troubleshooting
 
-| Belirti | Sebep / çözüm |
+| Symptom | Cause / fix |
 |---|---|
-| Değer hiç değişmiyor | Yanlış pin; CYD LDR = GPIO34 doğrula |
-| Değer hep 0 veya hep 4095 | Sensörü kapat/aç; sabitse pin/okuma sorunu |
-| Mantık ters (aydınlıkta "karanlık") | Karşılaştırmayı `>=` ↔ `<=` çevir |
-| Mavi LED hiç yanmıyor | Eşik aralık dışı; gerçek değerlere göre `DARK_THRESHOLD` ayarla |
+| The value never changes | Wrong pin; verify the CYD's LDR is GPIO34 |
+| The value is always 0 or always 4095 | Cover/uncover the sensor; if it stays fixed, it's a pin or read problem |
+| The logic is inverted ("dark" in bright light) | Flip the comparison, `>=` ↔ `<=` |
+| The blue LED never lights | The threshold is out of range; set `DARK_THRESHOLD` from your real values |
 
-## Sonraki adım
+## Next step
 
-`04-touch` — dokunmatik (XPT2046) + 4 köşe kalibrasyonu. clawd'ın "kafasına dokun =
-izin ver" killer feature'ının kalbi.
+`04-touch` — touch (XPT2046) plus four-corner calibration. The heart of clawd's "tap
+its head = allow" killer feature.

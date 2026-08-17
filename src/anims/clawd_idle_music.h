@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_idle_music': 8 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_idle_music': 8 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_IDLE_MUSIC_W 64
 #define CLAWD_IDLE_MUSIC_H 64

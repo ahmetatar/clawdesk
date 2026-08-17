@@ -1,17 +1,17 @@
 ---
-description: clawd cihazini bu makinenin Claude Code statusLine'ina bagla (device HUD ust bandi = model + context% + kota%)
+description: Connect the clawd device to this machine's Claude Code statusLine (device HUD top band = model + context% + quota%)
 ---
 
-Bu makinede clawd device statusLine kurulumunu yap.
+Set up the clawd device statusLine on this machine.
 
-Su komutu calistir (mevcut status line'i AYNEN sarar + cihaza `POST /status` ekler; geri almak icin `--uninstall`):
+Run this command (it wraps the existing status line verbatim and adds `POST /status` to the device; `--uninstall` reverts it):
 
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/clawd-statusline-setup.sh"`
 
-Eger `${CLAUDE_PLUGIN_ROOT}` cozulmezse, clawd plugin'inin `scripts/clawd-statusline-setup.sh` dosyasini bul ve calistir.
+If `${CLAUDE_PLUGIN_ROOT}` does not resolve, locate the clawd plugin's `scripts/clawd-statusline-setup.sh` and run that.
 
-Sonra kullaniciya sunlari soyle:
-- Mevcut status line'i KORUNDU (CLI gorunumu degismez), wrapper icinden calisir.
-- Cihaz ust bandi artik model + context% + 5h% + wk% gosterir (yuzdeler kullanima gore yesil/sari/kirmizi).
-- Cihaz `clawd.local`'de degilse, `CLAWD_HOST`'u proje `.claude/settings.local.json` env blogundan ver (or. `"CLAWD_HOST": "192.168.1.200"`).
-- Geri almak: ayni script'i `--uninstall` ile calistir.
+Then tell the user:
+- The existing status line is preserved (the CLI looks unchanged); it runs inside the wrapper.
+- The device's top band now shows model + context% + 5h% + wk% (percentages colored green/yellow/red by usage).
+- If the device is not at `clawd.local`, set `CLAWD_HOST` in the project's `.claude/settings.local.json` env block (e.g. `"CLAWD_HOST": "192.168.1.200"`).
+- To revert: run the same script with `--uninstall`.

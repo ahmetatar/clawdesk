@@ -1,84 +1,86 @@
-# clawd — Claude Code plugin'i
+# clawd — the Claude Code plugin
 
-Claude Code hook olaylarını **clawd cihazına** (CYD/ESP32) `POST /e` ile yansıtır.
-Maskot; sen kod yazarken düşünür, araç çalışırken "hack"ler, commit'te sevinir,
-hata olduğunda üzülür, iş bitince dinlenir.
+Mirrors Claude Code hook events to the **clawd device** (CYD/ESP32) via `POST /e`.
+The mascot thinks while you write a prompt, "hacks" while a tool runs, celebrates a
+commit, looks sorry on an error, and rests when the work is done.
 
-Firmware tarafı (`src/main.cpp` → `mapEvent`) bu olayları zaten karşılıyor; bu plugin
-PC tarafındaki eksik köprüdür. Protokol: repo kökündeki `clawd-device-protocol.md`.
-
----
-
-## En kolay yol: `./install.sh`
-
-Repo kökünde `./install.sh` çalıştır — WiFi'yı sorar, cihazı flaslar, plugin'i bu
-makinede **global** kurar (`--scope user`, her projede aktif olur), statusLine ve
-spinner köprülerini bağlar. Geri almak için `./uninstall.sh`. Aşağıdaki manuel
-adımlar bu script'in elle karşılığıdır — install.sh'i kullanıyorsan gerek yok.
-
-## Gereksinimler
-
-1. **Çalışan bir clawd cihazı** — CYD'ye firmware flash'lanmış ve **kendi WiFi'na**
-   bağlanmış olmalı. (Kurulum: repo kökü `README.md` + `include/secrets.h`'a kendi
-   SSID/parolan; `pio run -t upload`.) PC ile cihaz **aynı ağda** olmalı.
-2. **`jq` ve `curl`** — hook script'i bunları kullanır. macOS'te curl hazır; jq:
-   `brew install jq`. (Kontrol: `jq --version`, `curl --version`.)
-3. **Claude Code** — hook'lar buradan tetiklenir.
-
-Yeni birine cihazı verdiğinde tek gerçek uğraş: (1) firmware'i kendi WiFi'yla bir
-kez flash'lamak, (2) plugin'i kurmak, (3) mDNS ağında çalışmıyorsa cihazın IP'sini
-bir yere yazmak (aşağıda). Kod tarafında elle düzenleme YOK. `install.sh` bu üç
-adımı da yapar.
+The firmware side (`src/main.cpp` → `mapEvent`) already handles these events; this
+plugin is the missing bridge on the PC side. Protocol: `clawd-device-protocol.md`
+at the repo root.
 
 ---
 
-## Kurulum (manuel)
+## The easy way: `./install.sh`
 
-Plugin, repo içinde bir **yerel marketplace** olarak durur. Yolu **kendi klonuna
-göre** ver (aşağısı örnek — `git clone` yaptığın dizini kullan):
+Run `./install.sh` at the repo root — it asks for your WiFi, flashes the device,
+installs the plugin **globally** on this machine (`--scope user`, active in every
+project), and wires up the statusLine and spinner bridges. `./uninstall.sh` reverts
+it. The manual steps below are the same thing done by hand.
+
+## Requirements
+
+1. **A working clawd device** — firmware flashed onto the CYD and connected to
+   **your WiFi**. (Setup: the root `README.md` plus your SSID/password in
+   `include/secrets.h`; `pio run -t upload`.) The PC and the device must be on the
+   **same network**.
+2. **`jq` and `curl`** — used by the hook script. curl ships with macOS; jq:
+   `brew install jq`.
+3. **Claude Code** — the source of the hook events.
+
+Handing the device to someone else takes three things: flash the firmware with
+their WiFi once, install the plugin, and note the device's IP if mDNS does not work
+on their network. No code edits. `install.sh` does all three.
+
+---
+
+## Manual installation
+
+The plugin lives in the repo as a **local marketplace**. Use the path of **your own
+clone** below:
 
 ```
-# 1) marketplace'i tanıt (bir kez; <REPO> = klonladığın yol)
+# 1) register the marketplace (once; <REPO> = where you cloned it)
 /plugin marketplace add <REPO>/tools/clawd-plugin
 
-# 2a) GLOBAL etkinleştir (install.sh'in yaptığı: her projede aktif)
+# 2a) enable GLOBALLY (what install.sh does: active in every project)
 /plugin install clawd@clawd --scope user
 
-# 2b) ya da yalnız bu proje icin (kişisel, gitignore'lu kapsam)
+# 2b) or for this project only (personal, gitignored scope)
 /plugin install clawd@clawd --scope local
 ```
 
-`--scope user` global ayarlara (`~/.claude/settings.json` `enabledPlugins`) yazar;
-`--scope local` projenin `.claude/settings.local.json`'ına. Hook'lar **yeni** bir
-Claude Code oturumunda (ya da `/reload-plugins` sonrası) devreye girer.
+`--scope user` writes to the global settings (`~/.claude/settings.json`,
+`enabledPlugins`); `--scope local` writes to the project's
+`.claude/settings.local.json`. Hooks take effect in a **new** Claude Code session
+(or after `/reload-plugins`).
 
-## Kaldırma
+## Removal
 
 ```
-claude plugin disable clawd@clawd            # geçici kapat
-claude plugin uninstall clawd@clawd -s user  # tamamen kaldır (scope'u kurulumla eşleştir)
+claude plugin disable clawd@clawd            # disable temporarily
+claude plugin uninstall clawd@clawd -s user  # remove entirely (match the install scope)
 ```
 
-Ya da repo kökünde `./uninstall.sh` — plugin + statusLine + `CLAWD_HOST`'un
-hepsini tek seferde geri alır.
+Or run `./uninstall.sh` at the repo root, which reverts the plugin, the statusLine
+and `CLAWD_HOST` in one go.
 
 ---
 
-## Cihaz adresi — IP'ni nereye gireceksin
+## Device address — where to put your IP
 
-**`clawd.local` (mDNS) KULLANILMAZ.** Bazı ağlarda/extender'larda mDNS yavaş
-çalışır ya da tamamen düşer → event iletimi gecikir/kopar. Bunun yerine `install.sh`
-cihaza her zaman **sabit bir IP** atar (bağlı olduğun ağın gateway/subnet'ini
-otomatik tespit ederek) ve o IP'yi doğrudan kullanır — sıfır DNS gecikmesi,
-sıfır kopma riski.
+**`clawd.local` (mDNS) is not used.** On some networks and range extenders mDNS is
+slow or drops entirely, delaying or breaking event delivery. Instead `install.sh`
+always assigns the device a **static IP** (detecting the gateway and subnet of the
+network you are on) and uses that IP directly — no DNS delay, nothing to drop.
 
-**1) Cihazın IP'sini öğren** (`install.sh` zaten kendisi yapar; elle gerekirse):
-- Seri monitör: cihaz açılışta `[clawd] WiFi OK. IP: 192.168.x.y` yazar.
-- Router'ın DHCP istemci listesi (host adı: `clawd`).
+**1) Find the device's IP** (`install.sh` does this for you; if you need it by hand):
+- Serial monitor: the device prints `[clawd] WiFi OK. IP: 192.168.x.y` at boot.
+- The router's DHCP client list (hostname: `clawd`).
 
-**2) IP'yi yaz** — `install.sh` bunu **global** `~/.claude/settings.json`'a yazar
-(`env.CLAWD_HOST`, tüm projelerde geçerli). Elle/tek proje için aynısını
-`.claude/settings.local.json`'a da yazabilirsin (kişisel, gitignore'lu):
+**2) Set the IP** — `install.sh` writes it to the **global**
+`~/.claude/settings.json` (`env.CLAWD_HOST`, valid in every project). You can also
+set the same thing per-project in `.claude/settings.local.json` (personal,
+gitignored):
 
 ```json
 {
@@ -91,133 +93,137 @@ sıfır kopma riski.
 }
 ```
 
-Claude Code bu `env`'i hook'a enjekte eder → isim çözme adımı tamamen atlanır,
-sıfır DNS gecikmesi. Her makine kendi IP'sini burada tutar (bu dosya paylaşılmaz).
+Claude Code injects this `env` into the hook, skipping name resolution entirely.
+Each machine keeps its own IP here (the file is not shared).
 
-> **Ağ değiştirirsen** (ev ↔ hotspot vb.): `./install.sh`'i tekrar çalıştır — yeni
-> ağın gateway/subnet'ini otomatik tespit edip sabit IP'yi ona göre yeniden yazar.
-> `./uninstall.sh` sabit IP'yi eski bir değere DÖNDÜRMEZ, doğrudan kapatır (DHCP'ye
-> döner).
+> **If you change networks** (home ↔ hotspot, etc.): run `./install.sh` again — it
+> detects the new gateway/subnet and rewrites the static IP accordingly.
+> `./uninstall.sh` does not restore a previous value; it disables the static IP and
+> falls back to DHCP.
 
-`CLAWD_TIMEOUT` (sn, varsayılan 2) ile curl üst sınırını da ayarlayabilirsin. curl
-**arka planda** çalışır ve çıktısı `/dev/null`'a gider; bu yüzden timeout ne olursa
-olsun Claude Code hiç beklemez (fire-and-forget, protokol §6).
+`CLAWD_TIMEOUT` (seconds, default 2) sets the curl timeout. curl runs **in the
+background** with its output going to `/dev/null`, so whatever the timeout is,
+Claude Code never waits (fire-and-forget, protocol §6).
 
 ---
 
-## Olay eşlemesi
+## Event mapping
 
-| Claude Code hook | gönderilen (`POST /e`) | cihaz animasyonu |
+| Claude Code hook | sent (`POST /e`) | device animation |
 |---|---|---|
 | `UserPromptSubmit` | `{"k":"prompt.submit",...}` | **think** |
-| `PreToolUse` (tüm araçlar) | `{"k":"tool.pre",...}` | **hacking** (tekrar = no-op) |
+| `PreToolUse` (all tools) | `{"k":"tool.pre",...}` | **hacking** (repeat = no-op) |
 | `PostToolUse` (Bash, git commit/push) | `{"k":"git",...}` | **happy** |
-| `PostToolUseFailure` (tüm araçlar) | `{"k":"tool.post","d":{"ok":false}}` | **oops** |
+| `PostToolUseFailure` (all tools) | `{"k":"tool.post","d":{"ok":false}}` | **oops** |
 | `PreCompact` | `{"k":"compact"}` | **think** |
 | `SessionStart` | `{"k":"session.start"}` | **happy** |
 | `Stop` | `{"k":"session.stop"}` | **idle** |
 
-**Neden "event hell" yok:** firmware `if (id != curAnim) setAnim(...)` ile aynı
-animasyona giden olayı yutar. Bir araç patlaması boyunca clawd tek bir `hacking`
-state'inde kalır; sıradan araç *başarısı* hiç paket üretmez (yalnız git commit/push
-kutlanır). Bir turun akışı: **think → hacking → (git'te happy) → oops(hata) → idle.**
+**Why there is no "event hell":** the firmware swallows any event that leads to the
+animation already showing (`if (id != curAnim) setAnim(...)`). Through a burst of
+tool calls clawd stays in a single `hacking` state, and ordinary tool *successes*
+produce no packet at all (only git commit/push is celebrated). A turn flows:
+**think → hacking → (happy on git) → oops on error → idle.**
 
 ---
 
-## Test (cihaz olmadan / cihazla)
+## Testing (with or without a device)
 
-Script'i doğrudan besleyip davranışı görebilirsin:
+You can feed the script directly and watch what it does:
 
 ```
-# cihaz gerekmez — anında döner (erişilemez host)
+# no device needed — returns instantly (unreachable host)
 echo '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash"}' \
   | CLAWD_HOST=127.0.0.1:9 scripts/clawd-hook.sh
 
-# gerçek cihaza idle yollar (IP'ni yaz)
+# sends idle to a real device (use your IP)
 echo '{"hook_event_name":"Stop"}' \
   | CLAWD_HOST=192.168.1.200 scripts/clawd-hook.sh
 ```
 
-Cihaz canlılığı: `curl http://<IP>/health` →
+Liveness check: `curl http://<IP>/health` →
 `{"fw":"1.0.0","caps":["anim","led","touch","power","hud","status"]}`.
 
 ---
 
-## statusLine → cihaz HUD üst bandı
+## statusLine → the device's HUD top band
 
-Cihazın üst bandı, Claude Code'un **statusLine** özetini gösterir:
-`Model  ctx:%  5h:%  wk:%` (yüzdeler kullanıma göre yeşil/sarı/kırmızı — statusLine
-ile birebir). Veri `POST /status` ile gelir ve **güç yönetimini etkilemez** (cihazı
-uyandırmaz/uyanık tutmaz).
+The device's top band shows Claude Code's **statusLine** summary:
+`Model  ctx:%  5h:%  wk:%`, with the percentages colored green/yellow/red by usage,
+exactly as the statusLine does. The data arrives via `POST /status` and **does not
+affect power management** — it neither wakes the device nor keeps it awake.
 
-**Neden ayrı kurulum?** Claude Code plugin'lere ana `statusLine`'ı manifest'ten
-verdirmez (sadece `agent`/`subagentStatusLine`). Ayrıca `context_window`/`rate_limits`
-verisine YALNIZ statusLine komutu erişir (hook'lar erişemez). Tek desteklenen yol:
-`settings.json`'daki `statusLine.command`'i plugin'in **wrapper**'ına yönlendirmek.
+**Why a separate setup step?** Claude Code does not let plugins set the main
+`statusLine` from the manifest (only `agent`/`subagentStatusLine`), and only the
+statusLine command can see `context_window` / `rate_limits` data — hooks cannot.
+The one supported path is to point `statusLine.command` in `settings.json` at the
+plugin's **wrapper**.
 
-**Kurulum (bir kez):**
+**Setup (once):**
 ```
-/clawd:clawd-statusline          # slash komut, kurulumu çalıştırır
-# ya da elle:
+/clawd:clawd-statusline          # slash command, runs the setup
+# or by hand:
 bash "<plugin>/scripts/clawd-statusline-setup.sh"
 ```
-Kurulum senin **mevcut statusLine'ını AYNEN korur** (wrapper onu içinden çalıştırır,
-CLI görünümü değişmez) ve yanında cihaza POST ekler. Geri almak: aynı script `--uninstall`.
-Cihaz adresi `CLAWD_HOST`'tan gelir (`install.sh` bunu global olarak sabit IP'ye ayarlar).
+The setup **preserves your existing statusLine verbatim** (the wrapper runs it
+inside, so the CLI looks unchanged) and adds the device POST alongside it. To
+revert: the same script with `--uninstall`. The device address comes from
+`CLAWD_HOST` (`install.sh` sets it globally to the static IP).
 
 ---
 
-## Spinner kelimeleri → cihaz (Claude Code'un GERÇEK listesi)
+## Spinner words → the device (Claude Code's real list)
 
-Cihaz HUD üst satırındaki "düşünme/çalışma" metinleri (spinner) artık firmware'e
-gömülü **gerçek Claude Code gerund havuzundan** gelir (`src/spinner_words.h`, ~178
-kelime — "Cogitating…", "Herding…", "Combobulating…"). CC bu kelimeyi hiçbir hook/
-statusLine arayüzüne sızdırmadığı için ekrandaki **birebir o an**ki kelime alınamaz;
-bunun yerine cihaz **aynı kelime havuzundan** kendisi seçer (WORK+THINK tek havuz;
-HAPPY/OOPS cihaza özel kalır — CC başarıda/hatada spinner kelimesi göstermez).
+The "thinking/working" text on the device's HUD comes from the **real Claude Code
+gerund pool** compiled into the firmware (`src/spinner_words.h`, ~178 words —
+"Cogitating…", "Herding…", "Combobulating…"). CC does not expose the word currently
+on screen to any hook or statusLine interface, so the device cannot mirror it
+exactly; instead it picks from **the same pool** (WORK and THINK share one pool;
+HAPPY/OOPS stay device-specific, since CC shows no spinner word on success or error).
 
-Listeyi ileride özelleştirir/güncellersen cihaza yansıtmak için:
+To push a customised or updated list to the device:
 
 ```
-/clawd:sync-spinner-words        # slash komut: havuzu cihaza POST /words ile gönder
-# önce önizleme:
+/clawd:sync-spinner-words        # slash command: POST /words to the device
+# preview first:
 bash "<plugin>/scripts/clawd-spinner-sync.sh" --preview
 ```
 
-- **Kaynak:** `~/.claude/clawd-spinner-words.txt` varsa (her satır bir kelime; `#`
-  yorum) o dosya kaynak alınır; yoksa kurulu Claude Code ikilisinden **canlı** çıkarılır
-  (sürümden bağımsız — nadir bir çapa kelimeyle küme bulunur).
-- **Kalıcılık:** liste cihazın **RAM**'inde tutulur; reboot'ta `spinner_words.h`
-  varsayılanına döner. Özel listen varsa reboot sonrası komutu tekrar çalıştır.
-- **Compile-time varsayılanı tazele** (yeni CC sürümü):
+- **Source:** `~/.claude/clawd-spinner-words.txt` if it exists (one word per line,
+  `#` for comments); otherwise the words are extracted **live** from the installed
+  Claude Code binary, independent of version.
+- **Persistence:** the list lives in the device's **RAM** and reverts to the
+  `spinner_words.h` default on reboot. Re-run the command after a reboot to restore
+  a custom list.
+- **Refresh the compile-time default** (new CC release):
   `bash "<plugin>/scripts/clawd-spinner-extract.sh" --header > src/spinner_words.h`
-  → firmware'i yeniden flash'la.
+  then reflash the firmware.
 
-Cihaz adresi yine `CLAWD_HOST` ile verilir (`install.sh` sabit IP'yi buraya yazar).
+The device address again comes from `CLAWD_HOST`.
 
 ---
 
-## Dosyalar
+## Files
 
 ```
 tools/clawd-plugin/
-  .claude-plugin/marketplace.json     # yerel marketplace (name: clawd)
+  .claude-plugin/marketplace.json      # local marketplace (name: clawd)
   plugins/clawd/
-    .claude-plugin/plugin.json        # plugin manifesti
-    hooks/hooks.json                  # 8 hook olayı -> clawd-hook.sh
-    commands/clawd-statusline.md       # /clawd:clawd-statusline (statusLine kurulumu)
-    commands/sync-spinner-words.md     # /clawd:sync-spinner-words (spinner havuzu -> cihaz)
-    scripts/clawd-hook.sh             # olay köprüsü (jq + curl -> POST /e)
-    scripts/clawd-statusline-post.sh   # statusLine JSON -> POST /status (throttle'lı)
-    scripts/clawd-statusline.sh        # statusLine wrapper (orijinali sarar + cihaz)
-    scripts/clawd-statusline-setup.sh  # settings.json statusLine'ı wrapper'a bağlar
-    scripts/clawd-spinner-extract.sh   # CC spinner kelimelerini çıkar (--header ile spinner_words.h)
-    scripts/clawd-spinner-sync.sh      # spinner havuzunu cihaza gönder (POST /words)
+    .claude-plugin/plugin.json         # plugin manifest
+    hooks/hooks.json                   # 8 hook events -> clawd-hook.sh
+    commands/clawd-statusline.md       # /clawd:clawd-statusline (statusLine setup)
+    commands/sync-spinner-words.md     # /clawd:sync-spinner-words (spinner pool -> device)
+    scripts/clawd-hook.sh              # event bridge (jq + curl -> POST /e)
+    scripts/clawd-statusline-post.sh   # statusLine JSON -> POST /status (throttled)
+    scripts/clawd-statusline.sh        # statusLine wrapper (wraps the original + device)
+    scripts/clawd-statusline-setup.sh  # points settings.json statusLine at the wrapper
+    scripts/clawd-spinner-extract.sh   # extract CC spinner words (--header for spinner_words.h)
+    scripts/clawd-spinner-sync.sh      # send the spinner pool to the device (POST /words)
     README.md
 ```
 
-> **Geliştirici notu:** local-dizin kurulumu plugin'i
-> `~/.claude/plugins/cache/`'e **kopyalar**. `tools/clawd-plugin/**` altını
-> düzenlersen çalışan kopya değişmez: `claude plugin marketplace update clawd` +
-> reinstall gerekir (yeni cache için `plugin.json` sürümünü artır). IP'yi
-> `settings.local.json` env'inden vermek bu adımı gerektirmez — tercih sebebi.
+> **Developer note:** a local-directory install **copies** the plugin into
+> `~/.claude/plugins/cache/`. Editing `tools/clawd-plugin/**` does not change the
+> running copy: you need `claude plugin marketplace update clawd` plus a reinstall
+> (bump the version in `plugin.json` for a fresh cache). Setting the IP via the
+> `settings.local.json` env avoids that step, which is why it is preferred.

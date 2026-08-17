@@ -1,5 +1,5 @@
 {
-  "description": "clawd maskotu — Claude Code aktivitesini cihaza (clawd.local) yansitir",
+  "description": "clawd mascot — mirrors Claude Code activity to the device",
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }

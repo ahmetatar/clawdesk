@@ -1,50 +1,52 @@
 # 02 — Blink RGB
 
-CYD'nin **dahili** RGB LED'ini sürer. Rehberdeki **Adım 4.1** karşılığı. clawd'ın
-"duygu ışığı"nın temeli: düşünürken nefes, test geçince yeşil, hata olunca kırmızı.
+Drives the CYD's **on-board** RGB LED. This is **step 4.1** from the guide, and the
+basis of clawd's "mood light": breathing while thinking, green when tests pass, red
+on an error.
 
-## Bağlantı
+## Wiring
 
-**Hiçbir şey bağlama.** RGB LED kartın üstünde dahili (genelde USB konnektörü yakınında
-küçük bir LED). Sadece USB'yi tak.
+**Nothing to wire.** The RGB LED is on the board (usually a small LED near the USB
+connector). Just plug in USB.
 
-| Renk | GPIO |
+| Colour | GPIO |
 |---|---|
-| Kırmızı | 4 |
-| Yeşil | 16 |
-| Mavi | 17 |
+| Red | 4 |
+| Green | 16 |
+| Blue | 17 |
 
-> **active-low:** pine `LOW` yazınca yanar, `HIGH` yazınca söner. Sezgiye ters ama
-> CYD donanımı böyle (LED'in ortak ucu 3.3V'a bağlı).
+> **active-low:** writing `LOW` lights the pin, `HIGH` turns it off. Counterintuitive,
+> but that's how the CYD is wired (the LED's common leg goes to 3.3V).
 
-## Çalıştır
+## Run
 
 ```bash
 cd examples/02-blink-rgb
 pio run -t upload
 ```
 
-## Başarı kriteri
+## Success criteria
 
-LED sırayla: **kırmızı → yeşil → mavi → sarı → camgöbeği → mor → beyaz → kapalı**,
-sonra baştan. Seri monitörde her renk için `[clawd] LED -> ...` satırı.
+The LED cycles **red → green → blue → yellow → cyan → magenta → white → off**, then
+repeats, with a `[clawd] LED -> ...` line per colour in the serial monitor.
 
-## Bu ünitedeki bilinen donanım notu
+## Known hardware note for this unit
 
-Bu karttaki RGB LED'in **kırmızı kanalı (GPIO4) yanmıyor**; yeşil (16) ve mavi (17)
-sağlam. İzole teşhiste (sadece GPIO4 açık) hiç ışık çıkmadı → kırmızı alt-LED arızalı
-(soğuk lehim / ölü die) görünüyor. Pin eşlemesi ve active-low mantığı doğru (yeşil+mavi
-kanıtlıyor). clawd "duygu ışığı"nı kırmızısız (yeşil/mavi/camgöbeği) kuracağız.
+On this board the RGB LED's **red channel (GPIO4) does not light**; green (16) and
+blue (17) are fine. Isolated testing (GPIO4 alone) produced no light at all, so the
+red sub-LED appears faulty (cold solder joint or a dead die). The pin mapping and the
+active-low logic are correct, as green and blue prove. clawd's mood light will
+therefore be built without red (green/blue/cyan).
 
-## Sorun giderme
+## Troubleshooting
 
-| Belirti | Sebep / çözüm |
+| Symptom | Cause / fix |
 |---|---|
-| LED hiç yanmıyor | Pinler kart revizyonunda farklı olabilir; R/G/B = 4/16/17 doğrula |
-| Renkler **ters** (LOW'da sönük) | active-low değil; `setRGB`'de LOW↔HIGH çevir |
-| Yanlış renk adı yanıyor (kırmızı derken mavi) | Pin eşlemesi karışmış; PIN_R/G/B sırasını düzelt |
-| Sürekli yanık, değişmiyor | `loop()` çalışmıyor olabilir; seri monitöre bak |
+| The LED never lights | The pins may differ on your revision; verify R/G/B = 4/16/17 |
+| The colours are **inverted** (dark on LOW) | Not active-low; swap LOW↔HIGH in `setRGB` |
+| The wrong colour lights (blue when you asked for red) | The pin mapping is crossed; fix the PIN_R/G/B order |
+| It stays lit and never changes | `loop()` may not be running; check the serial monitor |
 
-## Sonraki adım
+## Next step
 
-`03-ldr` — ışık sensörü (LDR) okuma, "oda karardı → uyku modu" eşiği.
+`03-ldr` — reading the light sensor (LDR) and the "room went dark → sleep" threshold.

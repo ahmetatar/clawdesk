@@ -1,4 +1,4 @@
-// clawd animasyonu 'clawd_compact': 12 frame, 64x64, RGB565 (PixelLab)
+// clawd animation 'clawd_compact': 12 frames, 64x64, RGB565 (PixelLab)
 #pragma once
 #define CLAWD_COMPACT_W 64
 #define CLAWD_COMPACT_H 64

@@ -1,7 +1,8 @@
 #pragma once
-// GENERATED — DUZENLEME! `tools/clawd-plugin/plugins/clawd/scripts/clawd-spinner-extract.sh --header`
-// ile yeniden uretilir. Claude Code spinner ("gerund") kelime havuzu (derleme-ici
-// varsayilan). Calisma-zamaninda POST /words ile degistirilebilir (clawd:sync-spinner-words).
+// GENERATED — DO NOT EDIT! Regenerate with
+// `tools/clawd-plugin/plugins/clawd/scripts/clawd-spinner-extract.sh --header`.
+// Claude Code spinner ("gerund") word pool (compile-time default). Can be changed at
+// runtime via POST /words (clawd:sync-spinner-words).
 static const char *const SPINNER_WORDS_DEFAULT[] = {
   "Accomplishing",
   "Actioning",
