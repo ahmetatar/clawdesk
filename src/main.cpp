@@ -86,8 +86,14 @@ AnimId  returnAnim = ANIM_IDLE;                     // pose to return to after t
 // reaction poses are untouched.
 bool ctxHigh = false;
 
+// ---- quota-exhausted indicator ----
+// True when the last /status reported the 5h or weekly usage window at 100%.
+// Like ctxHigh, it only changes what "return to rest" resolves to.
+bool quotaFull = false;
+
 static inline AnimId restAnim() {
   if (ctxHigh) return ANIM_BRAIN_FULL;
+  if (quotaFull) return ANIM_IDLE_MUSIC;
   // Keep the current resting pose so repeated "return to rest" events do not
   // swap the mascot back and forth.
   return isIdlePose(curAnim) ? curAnim : ANIM_IDLE;
@@ -614,6 +620,16 @@ void loop() {
       if (!agentMode) {
         if (ctxHigh && isIdlePose(curAnim)) setAnim(ANIM_BRAIN_FULL);
         else if (!ctxHigh && curAnim == ANIM_BRAIN_FULL) setAnim(ANIM_IDLE);
+      }
+    }
+    // Same edge-trigger for the 5h/weekly usage windows: either one hitting
+    // 100% swaps the resting pose to idle_music; both clearing swaps it back.
+    bool nowQuotaFull = (sm.h5 >= 100 || sm.wk >= 100);
+    if (nowQuotaFull != quotaFull) {
+      quotaFull = nowQuotaFull;
+      if (!agentMode && !ctxHigh) {
+        if (quotaFull && isIdlePose(curAnim)) setAnim(ANIM_IDLE_MUSIC);
+        else if (!quotaFull && curAnim == ANIM_IDLE_MUSIC) setAnim(ANIM_IDLE);
       }
     }
   }

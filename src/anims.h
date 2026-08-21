@@ -48,16 +48,13 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_love,    CLAWD_LOVE_FRAMES,    110, true,  true,  false, "love"    },  // petting (stroke)
   { clawd_brain_full, CLAWD_BRAIN_FULL_FRAMES, 180, false, false, true, "brain_full" },  // context critical
   { clawd_compact, CLAWD_COMPACT_FRAMES,  150, false, false, true,  "compact" },  // PreCompact
-  { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // not triggered by any event yet (see below)
+  { clawd_idle_music, CLAWD_IDLE_MUSIC_FRAMES, 125, false, false, false, "idle_music" },  // resting pose while the 5h/weekly quota is exhausted
 };
 
 // ---- resting (idle) poses ----
 // Pose choice is never random: every pose on the device means something. Resting
-// is plain ANIM_IDLE.
-//
-// ANIM_IDLE_MUSIC is registered but nothing triggers it yet (likeliest owner:
-// session.stop). It already counts as a resting pose so that the day it is
-// wired up, returning from tickle/love lands on it correctly.
+// is plain ANIM_IDLE, unless the 5h or weekly usage window is at 100%
+// (quotaFull in main.cpp), in which case it's ANIM_IDLE_MUSIC.
 static inline bool isIdlePose(AnimId id) { return id == ANIM_IDLE || id == ANIM_IDLE_MUSIC; }
 
 // ---- "working" pose ----
