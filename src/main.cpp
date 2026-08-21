@@ -629,12 +629,19 @@ void loop() {
   }
 
   // 6) refresh the WiFi signal every 4 s; setWifi redraws only when the bar
-  //    count changes, so a fluctuating RSSI costs no SPI traffic.
+  //    count changes, so a fluctuating RSSI costs no SPI traffic. If the
+  //    association was dropped (e.g. long modem-sleep + extender roaming/
+  //    DHCP lease loss), kick a reconnect — otherwise the device sits
+  //    disconnected forever and stops receiving events until power-cycled.
   static uint32_t lastWifiPoll = 0;
   if (millis() - lastWifiPoll >= 4000) {
     lastWifiPoll = millis();
     bool c = (WiFi.status() == WL_CONNECTED);
     hud.setWifi(c, c ? WiFi.RSSI() : -127);
+    if (!c) {
+      Serial.println("[clawd] WiFi disconnected -> reconnecting");
+      WiFi.reconnect();
+    }
   }
 
   // 7) draw — nothing while asleep. In usage mode the quota view replaces the
