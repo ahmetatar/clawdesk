@@ -9,6 +9,7 @@ constexpr int T_CLK    = 25;   // touch (HSPI)
 constexpr int T_CS     = 33;
 constexpr int T_MOSI   = 32;
 constexpr int T_MISO   = 39;
+constexpr int PIN_SPEAKER = 26; // 3.5mm jack — direct DAC/PWM out, no onboard amp
 
 // ---- display / animation ----
 constexpr int ANIM_W   = 64;   // every animation is 64x64
@@ -59,6 +60,10 @@ constexpr uint8_t  BL_OFF  = 0;
 constexpr int      BL_CH   = 0;
 constexpr int      BL_FREQ = 20000;     // 20 kHz: above audible whine
 constexpr int      BL_RES  = 8;         // 8-bit (0..255)
+
+// LEDC (hardware PWM) — speaker tone, separate channel from the backlight
+constexpr int      SPK_CH  = 1;
+constexpr int      SPK_RES = 10;        // 10-bit duty (only used at 50% for a square wave)
 
 // soft fade: duty moves BL_STEP every BL_RAMP_MS (~170 ms for a full fade)
 constexpr uint8_t  BL_STEP     = 12;

@@ -26,6 +26,7 @@
 #include "secrets.h"
 #include "anims.h"
 #include "power.h"
+#include "speaker.h"
 #include "hud.h"
 #include "mini.h"
 #include "usage.h"
@@ -36,6 +37,7 @@ SPIClass touchSPI(HSPI);
 XPT2046_Touchscreen ts(T_CS);
 AsyncWebServer server(80);
 PowerManager power;
+Speaker speaker;
 Hud hud;
 MiniFleet minis;   // subagent visualization: a row of small clawds
 UsageScreen usage; // quota view, reached via the top-right corner button
@@ -114,6 +116,9 @@ static void setAnim(AnimId id) {
   // ANIM_AGENTS draws only the top band, so clear the previous full-size
   // animation once on entry to leave a clean background for the minis.
   if (id == ANIM_AGENTS) tft.fillRect(xoff, yoff, SW, SH, tft.color565(BG_R, BG_G, BG_B));
+  // Claude is waiting on you (AskUserQuestion/ExitPlanMode) — chime so you
+  // notice even when you're not looking at the screen.
+  if (id == ANIM_ASK) speaker.playAsk();
   Serial.printf("[clawd] anim -> %s\n", a.name);
 }
 
@@ -244,6 +249,7 @@ void setup() {
   tft.setRotation(1);                              // landscape 320x240
   tft.setSwapBytes(true);
   power.begin();                                   // takes the BL pin over to LEDC (after tft.init)
+  speaker.begin();
 
   touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
   ts.begin(touchSPI);
@@ -484,6 +490,8 @@ void loop() {
   // setup() bailed early (e.g. no WiFi): nothing was initialised, so don't draw
   // over the error screen.
   if (!g_ready) { delay(200); return; }
+
+  speaker.tick();
 
   bool wasAsleep = power.asleep();
   int  rawx = 0, rawy = 0;
