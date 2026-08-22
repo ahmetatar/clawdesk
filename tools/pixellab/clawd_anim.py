@@ -7,6 +7,7 @@
 #   python3 clawd_anim.py <name>    # idle | hacking  (out/anim_<name>/ + montage)
 #   python3 clawd_anim.py all
 import sys, os, glob, shutil, math
+from collections import Counter
 from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -810,6 +811,44 @@ def draw_note(c, x, y, col, alpha=255, glyph=0):
         p[nx, ny] = (min(255, r + 60), min(255, gg + 60), min(255, b + 60), alpha)
     c.alpha_composite(spr, (x, y))
 
+# --- PixelLab pixel-art headphones (from 09_headphones.py), used by idle_music ---
+# Same hybrid recipe as the heart/brain sprites: clawd stays deterministic, the
+# accessory is a real PixelLab-textured sprite. Comes back on a flat gray
+# background, keyed out by corner color and cropped like the others.
+def _load_headphones_spr():
+    hp = os.path.join(HERE, "out/headphones.png")
+    if not os.path.exists(hp): return None
+    im = Image.open(hp).convert("RGBA"); px = im.load(); w, h = im.size
+    # sample the background as the modal color, not just the (0,0) corner --
+    # PixelLab sometimes returns a single fully-transparent padding pixel there,
+    # whose stray RGB (usually black) would wrongly key out the dark outline.
+    counts = Counter(px[x, y][:3] for y in range(h) for x in range(w) if px[x, y][3] > 0)
+    bg = counts.most_common(1)[0][0]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0 or all(abs((r, g, b)[k] - bg[k]) <= 45 for k in range(3)):
+                px[x, y] = (0, 0, 0, 0)                      # drop the grey background
+    bb = im.getchannel("A").getbbox()
+    return im.crop(bb) if bb else None
+HEADPHONES_SPR = _load_headphones_spr()
+
+def draw_headphones_spr(c, dx=0, dy=0, tw=42, th=13):
+    """Composite the PixelLab headphones sprite, positioned the same as the
+    code-drawn version: centered above/on clawd's head, moving with dx/dy so it
+    tracks the mascot's bob and lean. Falls back to the code-drawn version when
+    the sprite is missing."""
+    if HEADPHONES_SPR is None:
+        return draw_headphones(c, dx=dx, dy=dy)
+    spr = HEADPHONES_SPR.resize((tw, th), Image.NEAREST)   # fixed target box: the
+                                                             # cups must reach clawd's
+                                                             # body edges to clear the
+                                                             # face, aspect-correctness
+                                                             # is secondary here
+    cx = CX + dx + CW // 2
+    cy = CY + dy + 1                    # sprite center ~ eye level, band clears the head
+    c.alpha_composite(spr, (cx - tw // 2, cy - th // 2))
+
 def draw_headphones(c, dx=0, dy=0):
     """Over-ear headphones. Three things make them legible at this size: the band
     must clear the head with a visible gap (touching reads as a hat), the cups must
@@ -878,7 +917,7 @@ def anim_idle_music(n=8):
         cl = clawd_variant(eyes="happy", larm_dy=larm, rarm_dy=rarm)
         c = base_canvas()
         place(c, cl, dx=dx, dy=dy)
-        draw_headphones(c, dx=dx, dy=dy)                        # moves with the mascot
+        draw_headphones_spr(c, dx=dx, dy=dy)                    # moves with the mascot
         for k, (nx, ny, ph, gl) in enumerate(notes):
             age = (i - ph) % n
             if age >= life: continue
