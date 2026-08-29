@@ -6,7 +6,7 @@ runs, celebrating your commits, sulking when something fails, and showing your
 5-hour/weekly quota at a glance.
 
 <p align="center">
-  <img src="docs/images/clawd-hero.jpg" alt="clawd device showing the quota screen" width="480">
+  <img src="docs/images/clawd-hero.jpg" alt="clawd device on a desk, showing the idle mascot animation" width="480">
 </p>
 
 Runs on a **CYD** (ESP32-2432S028R, "Cheap Yellow Display") — a $10-15 board with a
