@@ -9,7 +9,7 @@
 Two parts, one repo:
 
 ```
-clawd-dashboard/
+clawdesk/
 ├── hooks/                  # PC side — the bridge into Claude Code
 │   ├── dispatch            # single entry point (stdin JSON → HTTP POST)
 │   ├── lib/                # normalization: tool group, git, mood, risk

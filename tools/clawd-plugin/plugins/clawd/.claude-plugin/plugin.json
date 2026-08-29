@@ -3,5 +3,5 @@
   "version": "1.0.8",
   "description": "Drives the clawd CYD mascot from Claude Code hook events (POST /e): think / hacking / happy / oops / idle, plus the agents pose and mini clawds for subagents. Also mirrors the statusLine summary to the device HUD (POST /status; /clawd:clawd-statusline) and syncs the spinner word pool with Claude Code's real list (POST /words; /clawd:sync-spinner-words).",
   "author": { "name": "Ahmet Atar" },
-  "homepage": "https://github.com/ahmetatar/clawd-dashboard"
+  "homepage": "https://github.com/ahmetatar/clawdesk"
 }

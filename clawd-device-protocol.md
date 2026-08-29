@@ -161,7 +161,7 @@ Every event is a network call, so to avoid adding latency to every tool:
 
 ```http
 GET  /health                                  → 200 {"fw":"0.1.0","caps":["led","audio","touch","ldr"]}
-POST /e   {"k":"session.start","d":{"cwd":"clawd-dashboard","model":"opus-4-8"}}   → 204
+POST /e   {"k":"session.start","d":{"cwd":"clawdesk","model":"opus-4-8"}}   → 204
 POST /e   {"k":"prompt.submit","d":{"len":142,"mood":"fix"}}                       → 204
 POST /e   {"k":"think","d":{"on":true}}                                            → 204
 POST /e   {"k":"tool.pre","d":{"g":"search","tool":"Grep","s":"TODO"}}             → 204
